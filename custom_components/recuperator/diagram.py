@@ -127,6 +127,7 @@ def render_svg(
     phase: str = "stopped",
     title: str = "",
     palette: Palette = PALETTE,
+    passive: bool = False,
 ) -> str:
     """The whole picture as an SVG document.
 
@@ -144,11 +145,12 @@ def render_svg(
             x1, x2 = 180, 460
         else:
             x1, x2 = 460, 180
+        dash = ' stroke-dasharray="10 9"' if passive and phase == "intake" else ""
         arrow = (
             f'<line x1="{x1}" y1="34" x2="{x2}" y2="34" stroke="{TEXT}" stroke-width="4" '
-            f'stroke-linecap="round" marker-end="url(#head)"/>'
+            f'stroke-linecap="round" marker-end="url(#head)"{dash}/>'
         )
-    label = PHASE_TEXT.get(phase, phase)
+    label = "Intake (passive)" if passive and phase == "intake" else PHASE_TEXT.get(phase, phase)
     title_el = (
         f'<text x="320" y="234" text-anchor="middle" font-size="13" fill="{TEXT}">{escape(title)}</text>'
         if title

@@ -119,6 +119,9 @@ For a recuperator named *Basement Breather*:
 | `image.basement_breather_diagram` | A live picture of the pipe, filled with the temperature gradient (see [Diagram](#diagram)) |
 | `image.basement_breather_diagram_replay` | The last animated replay made with **Create replay** (see [Replay](#replay-watch-it-breathe)) |
 | `text.basement_breather_diagram_colours` | The diagram's colour scale, editable (see [Diagram colours](#diagram-colours)) |
+| `switch.basement_breather_passive_intake` | **Passive intake** on/off (see [Passive intake](#passive-intake)) |
+| `binary_sensor.basement_breather_passive_inflow` | On if air was seen flowing in during the running or last passive intake |
+| `sensor.basement_breather_passive_inflow_delay` | How long into the last passive intake the inflow was seen (s) |
 | `binary_sensor.basement_breather_cold_weather` | On while the cold-weather limits apply |
 | `binary_sensor.basement_breather_frost_risk` | On if, in cold weather, the last exhaust never warmed the core's outdoor face above freezing (condensation there can ice up) |
 | `number.basement_breather_...` | One per setting (below), under the device's **Configuration** section |
@@ -144,17 +147,20 @@ All settings take effect within a second, without restarting the cycle. Change t
 | Setting | Default | Range | What it does |
 | --- | --- | --- | --- |
 | Recovery target | 80 % | 5–100 | End a phase when the far probe has closed this much of the gap. See [Choosing the recovery target](#choosing-the-recovery-target). |
-| Settle window | 15 s | 5–120 | Time over which "settled" is judged |
+| Settle window | 15 s | 5–1800 | Time over which "settled" is judged |
 | Settle change | 0.2 °C | 0.05–2 | Both probes moving less than this over the settle window counts as settled |
-| Minimum phase | 20 s | 5–300 | No phase ends sooner (protects the fans and relays from rapid switching) |
-| Maximum phase | 120 s | 10–900 | No phase lasts longer. If set below Minimum phase, Minimum phase wins. |
+| Minimum phase | 20 s | 5–3600 | No phase ends sooner (protects the fans and relays from rapid switching) |
+| Maximum phase | 120 s | 10–86400 (24 h) | No exhaust or powered intake phase lasts longer. If set below Minimum phase, Minimum phase wins. |
 | Pause | 1 s | 0–30 | Both fans off between phases |
-| Timed phase | 60 s | 10–900 | Phase length in Timed mode, in mild weather, and while a probe is unavailable |
+| Timed phase | 60 s | 10–86400 | Phase length in Timed mode, in mild weather, and while a probe is unavailable |
 | Similar temperatures | 2.0 °C | 0–20 | Indoor and outdoor air closer than this: timed phases instead of probe-driven ones. 0 turns this off. |
 | Cold threshold | −5 °C | −40–15 | Outdoor temperature at or below which the cold-weather limits apply |
-| Cold intake limit | 300 s | 10–900 | In cold weather, intake never runs longer than this. Leave enough time for fresh air to get through the ducting (see [Winter](#winter)) |
+| Cold intake limit | 300 s | 10–86400 | In cold weather, intake never runs longer than this. Leave enough time for fresh air to get through the ducting (see [Winter](#winter)) |
 | Cold exhaust extra | 7 s | 0–60 | In cold weather, exhaust runs at least as long as the last intake and at most this much longer |
 | Maximum supply drop | 3 °C | 0.5–20 | During intake, once *Minimum phase* has passed, end the intake if the air entering the room is more than this much colder than the room (the basement temperature measured at the end of the last exhaust). Follows the room, so it works in every season. **The main draught protection.** |
+| Passive intake | off | on/off | Intake phases run with the intake fan **off** (see [Passive intake](#passive-intake)) |
+| Passive intake maximum | 1800 s (30 min) | 60–86400 | The longest a passive intake may last |
+| Passive inflow change | 0.3 °C | 0.05–5 | How far the inside probe must move towards the outdoor temperature during a passive intake to count as air flowing in |
 | Diagram colours | weather-service scale | text | The diagram's colour stops (see [Diagram colours](#diagram-colours)) |
 | Minimum supply temperature | −30 °C (off) | −30–25 | Optional hard floor: the intake also ends if the air entering the room drops below this. Only set it if there is a temperature the room must never see (for example water pipes). |
 
@@ -167,6 +173,16 @@ The probes sit in the airstream at the two faces of the core. During intake, the
 - With a large core or slow fans, even a low target can take minutes to reach. *Maximum phase* then sets the rhythm; that is fine.
 
 If ventilation matters more than heat recovery, use a higher target or longer *Minimum phase*, and rely on *Minimum supply temperature* and the cold-weather limits to protect the room in winter.
+
+## Passive intake
+
+With **Passive intake** on (a switch on the device page, or Configure, Settings), the cycle keeps the **intake fan off**. After each exhaust has lowered the pressure indoors, the room refills on its own through the core: the air drifts back in, and the core still warms (or cools) it on the way. The exhaust fan works as usual. This is for testing whether the building re-ventilates passively, or for running on one fan.
+
+- A passive intake lasts up to **Passive intake maximum** (default 30 minutes, up to 24 hours). It can end sooner by the usual rules: *Recovery target*, *Settled*, *Maximum supply drop*, *Minimum supply temperature* and the cold-weather limits. In timed breathing, a passive intake lasts the passive maximum.
+- **Is air actually coming in?** With the fan off, only air that really flows in can move the inside probe (the room end of the core) towards the outdoor temperature. Once it has moved **Passive inflow change** (default 0.3 °C) that way, **Passive inflow** turns on, and **Passive inflow delay** shows how long into the intake that happened. If Passive inflow stays off for whole intakes, the room is not refilling through the core (it may be leaking in elsewhere instead). This needs outdoor and indoor air to differ by more than the Passive inflow change.
+- In cold weather, exhaust is only stretched to match the last intake after a **powered** intake, not after a long passive one.
+- The Diagram shows **Intake (passive)** with a dashed arrow.
+- The Phase sensor stays `intake` during a passive intake; its `passive` attribute is `true`.
 
 ## Winter
 

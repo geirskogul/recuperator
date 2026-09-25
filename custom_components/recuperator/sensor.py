@@ -38,6 +38,7 @@ READOUTS = (
     Readout("last_intake", lambda l: l.last_intake_seconds, SensorDeviceClass.DURATION, UnitOfTime.SECONDS, icon="mdi:arrow-down-bold-circle-outline", decimals=0),
     Readout("outdoor_temperature", lambda l: l.outdoor_estimate, SensorDeviceClass.TEMPERATURE, UnitOfTemperature.CELSIUS, decimals=1),
     Readout("basement_temperature", lambda l: l.basement_estimate, SensorDeviceClass.TEMPERATURE, UnitOfTemperature.CELSIUS, decimals=1),
+    Readout("passive_inflow_delay", lambda l: l.passive_flow_after_seconds, SensorDeviceClass.DURATION, UnitOfTime.SECONDS, icon="mdi:timer-outline", decimals=0),
     Readout("recovery", lambda l: None if l.last_recovery_percent is None else round(l.last_recovery_percent, 1), None, PERCENTAGE, icon="mdi:heat-wave", decimals=0),
 )
 

@@ -68,11 +68,17 @@ class Settings:
     cold_exhaust_extra_seconds: float = DEFAULTS["cold_exhaust_extra_seconds"]
     max_supply_drop: float = DEFAULTS["max_supply_drop"]
     min_supply_temperature: float = DEFAULTS["min_supply_temperature"]
+    passive_intake_max_seconds: float = DEFAULTS["passive_intake_max_seconds"]
+    passive_flow_delta: float = DEFAULTS["passive_flow_delta"]
+    passive_intake: bool = False
 
     @classmethod
     def from_mapping(cls, values: dict) -> Settings:
         """Build from a dict of stored options, filling gaps with defaults."""
-        return cls(**{k: float(values.get(k, v)) for k, v in DEFAULTS.items()})
+        return cls(
+            **{k: float(values.get(k, v)) for k, v in DEFAULTS.items()},
+            passive_intake=bool(values.get("passive_intake", False)),
+        )
 
 
 class BreathingLogic:
@@ -92,6 +98,11 @@ class BreathingLogic:
         self.last_recovery_percent: float | None = None
         self.cold: bool = False
         self.frost_risk: bool = False
+        # Passive intake: the intake phase runs with the intake fan off.
+        self.passive: bool = False  # the running (or last) intake is passive
+        self.last_intake_passive: bool = False
+        self.passive_flow: bool | None = None  # inflow seen during the running/last passive intake
+        self.passive_flow_after_seconds: float | None = None
         self._intake_inside_start: float | None = None
         self._exhaust_max_outside: float | None = None
         self._far_start: float | None = None
@@ -164,6 +175,10 @@ class BreathingLogic:
         self._far_start = far
         if phase == PHASE_INTAKE:
             self._intake_inside_start = inside
+            self.passive = s.passive_intake
+            if self.passive:
+                self.passive_flow = False
+                self.passive_flow_after_seconds = None
         if phase == PHASE_EXHAUST:
             self._exhaust_max_outside = outside
 
@@ -240,6 +255,7 @@ class BreathingLogic:
                 )
             else:
                 self.last_intake_seconds = duration
+                self.last_intake_passive = self.passive
                 if outside is not None:
                     self.outdoor_estimate = outside
             ref, far = self._ref_far(self.phase, inside, outside)
@@ -287,6 +303,9 @@ class BreathingLogic:
         if self.phase == PHASE_EXHAUST and outside is not None:
             if self._exhaust_max_outside is None or outside > self._exhaust_max_outside:
                 self._exhaust_max_outside = outside
+        passive = self.phase == PHASE_INTAKE and self.passive
+        if passive:
+            self._watch_passive_flow(elapsed, s, inside)
 
         # Room protection: during intake the inside probe reads the air entering the
         # room. After the minimum phase (so fresh air has had time to arrive), end
@@ -305,15 +324,16 @@ class BreathingLogic:
         if self.timed_reason != TIMED_NOT:
             if self.cold and self.phase == PHASE_INTAKE and elapsed >= s.cold_intake_max_seconds:
                 return REASON_COLD_LIMIT  # even timed intake respects the cold limit
-            return REASON_TIMED if elapsed >= s.timed_phase_seconds else None
+            length = s.passive_intake_max_seconds if passive else s.timed_phase_seconds
+            return REASON_TIMED if elapsed >= length else None
 
         lower = s.min_phase_seconds
-        cap = max(s.max_phase_seconds, lower)
+        cap = max(s.passive_intake_max_seconds if passive else s.max_phase_seconds, lower)
         cap_reason = REASON_MAX_TIME
         if self.cold and self.phase == PHASE_INTAKE and s.cold_intake_max_seconds < cap:
             cap, cap_reason = s.cold_intake_max_seconds, REASON_COLD_LIMIT
             lower = min(lower, cap)
-        elif self.cold and self.phase == PHASE_EXHAUST and self.last_intake_seconds:
+        elif self.cold and self.phase == PHASE_EXHAUST and self.last_intake_seconds and not self.last_intake_passive:
             # In the cold, exhaust at least as long as the last intake (keeps the
             # core's outer end from freezing and the basement from cooling), but
             # no more than cold_exhaust_extra_seconds longer.
@@ -342,3 +362,23 @@ class BreathingLogic:
         ):
             return REASON_SETTLED
         return None
+
+    def _watch_passive_flow(self, elapsed: float, s: Settings, inside) -> None:
+        """During a passive intake, notice air actually flowing in.
+
+        With the intake fan off, air that drifts in through the core cools (or
+        warms) the air at the room end towards the outdoor temperature. Once the
+        inside probe has moved passive_flow_delta that way, passive inflow is seen.
+        Needs a known outdoor temperature that differs from the room.
+        """
+        if self.passive_flow or inside is None or self._intake_inside_start is None:
+            return
+        if self.outdoor_estimate is None:
+            return
+        direction = self.outdoor_estimate - self._intake_inside_start
+        if abs(direction) < s.passive_flow_delta:
+            return  # indoor and outdoor too alike to tell
+        moved = (inside - self._intake_inside_start) * (1 if direction > 0 else -1)
+        if moved >= s.passive_flow_delta:
+            self.passive_flow = True
+            self.passive_flow_after_seconds = elapsed

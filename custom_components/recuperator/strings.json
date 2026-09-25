@@ -65,14 +65,17 @@
           "cold_exhaust_extra_seconds": "Cold exhaust extra",
           "reset_to_defaults": "Reset settings to defaults",
           "min_supply_temperature": "Minimum supply temperature",
-          "max_supply_drop": "Maximum supply drop"
+          "max_supply_drop": "Maximum supply drop",
+          "passive_intake": "Passive intake (intake fan off)",
+          "passive_intake_max_seconds": "Passive intake maximum",
+          "passive_flow_delta": "Passive inflow change"
         },
         "data_description": {
           "recovery_percent": "End a phase once the far probe has closed this much of the gap. Low (10-25%): switch as soon as the far end of the core starts to change, best heat recovery, shorter phases. High (80%+): let the core fill up, longer phases, more heat lost at the end of each phase.",
           "settle_seconds": "The far probe counts as settled if it moved less than the settle change over this many seconds.",
           "settle_delta": "How little the far probe may move during the settle window to count as settled (ended early because the core has done all it will).",
           "min_phase_seconds": "No exhaust or intake phase ends before this, whatever the probes say.",
-          "max_phase_seconds": "No exhaust or intake phase runs longer than this.",
+          "max_phase_seconds": "No exhaust or powered intake phase runs longer than this (up to 24 hours).",
           "pause_seconds": "Both fans off for this long between phases, so a fan stops before the other starts.",
           "timed_phase_seconds": "Length of each phase in Timed mode, and whenever the probes cannot be used (inside and outside too similar, or a probe unavailable).",
           "similar_band": "If the two probes differ by less than this when a phase starts, that phase is timed instead (nothing to recover, e.g. mild weather or hose disconnected).",
@@ -81,7 +84,10 @@
           "cold_exhaust_extra_seconds": "In cold weather, exhaust runs at least as long as the last intake and at most this much longer.",
           "reset_to_defaults": "Ignore the values above and restore every numeric setting to its default. The diagram colours are kept.",
           "min_supply_temperature": "Optional hard floor: the intake also ends if the air entering the room drops below this temperature. -30 (the default) means off. Only set it if there is a temperature the room must never see, e.g. near water pipes.",
-          "max_supply_drop": "During intake the inside probe reads the air entering the room. Once the minimum phase has passed, the intake ends if that air is more than this much colder than the room (the basement temperature from the last exhaust). Works in any season: it follows the room, so a cold room still breathes."
+          "max_supply_drop": "During intake the inside probe reads the air entering the room. Once the minimum phase has passed, the intake ends if that air is more than this much colder than the room (the basement temperature from the last exhaust). Works in any season: it follows the room, so a cold room still breathes.",
+          "passive_intake": "Intake phases run with the intake fan off: after each exhaust, the room refills on its own through the core, for up to the passive intake maximum. The exhaust fan works as usual. Passive inflow shows whether air really came in.",
+          "passive_intake_max_seconds": "With passive intake on, the longest an intake phase may last (it can end sooner by the usual rules: recovery target, settled, supply drop, cold limits).",
+          "passive_flow_delta": "During a passive intake, the inside probe moving this much towards the outdoor temperature counts as air flowing in."
         }
       },
       "colours": {
@@ -145,6 +151,9 @@
     "switch": {
       "breathing": {
         "name": "Breathing"
+      },
+      "passive_intake": {
+        "name": "Passive intake"
       }
     },
     "select": {
@@ -169,6 +178,9 @@
       },
       "frost_risk": {
         "name": "Frost risk"
+      },
+      "passive_inflow": {
+        "name": "Passive inflow"
       }
     },
     "number": {
@@ -210,6 +222,12 @@
       },
       "max_supply_drop": {
         "name": "Maximum supply drop"
+      },
+      "passive_intake_max_seconds": {
+        "name": "Passive intake maximum"
+      },
+      "passive_flow_delta": {
+        "name": "Passive inflow change"
       }
     },
     "sensor": {
@@ -250,6 +268,9 @@
       },
       "recovery": {
         "name": "Heat recovery"
+      },
+      "passive_inflow_delay": {
+        "name": "Passive inflow delay"
       }
     },
     "image": {

@@ -28,6 +28,7 @@ from .const import (
     CONF_INTAKE_SWITCH,
     CONF_OUTSIDE_SENSOR,
     CONF_PALETTE,
+    CONF_PASSIVE_INTAKE,
     DEFAULTS,
     MODE_AUTOMATIC,
     PHASE_EXHAUST,
@@ -104,6 +105,16 @@ class RecuperatorController:
         if palette == PALETTE:
             options.pop(CONF_PALETTE, None)
         self.hass.config_entries.async_update_entry(self.entry, options=options)
+
+    @property
+    def passive_intake(self) -> bool:
+        return bool(self.entry.options.get(CONF_PASSIVE_INTAKE, False))
+
+    async def async_set_passive_intake(self, on: bool) -> None:
+        """Turn passive intake on or off (applies from the next intake phase)."""
+        self.hass.config_entries.async_update_entry(
+            self.entry, options={**self.entry.options, CONF_PASSIVE_INTAKE: bool(on)}
+        )
 
     async def async_reset_settings(self) -> None:
         """Put every setting back to its default."""
@@ -261,7 +272,8 @@ class RecuperatorController:
         phase = self.logic.phase
         return {
             self.exhaust_switch: self.enabled and phase == PHASE_EXHAUST,
-            self.intake_switch: self.enabled and phase == PHASE_INTAKE,
+            # Passive intake: the intake fan stays off; air refills on its own.
+            self.intake_switch: self.enabled and phase == PHASE_INTAKE and not self.logic.passive,
         }
 
     def _is_on(self, entity_id: str) -> bool | None:
@@ -323,4 +335,5 @@ class RecuperatorController:
             "timed": self.logic.timed_reason,
             "cold_weather": self.logic.cold,
             "mode": self.mode,
+            "passive": self.logic.phase == PHASE_INTAKE and self.logic.passive,
         }

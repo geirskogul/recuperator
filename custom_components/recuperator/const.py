@@ -27,6 +27,7 @@ CONF_EXHAUST_SWITCH = "exhaust_switch"  # the fan that blows basement air out (i
 CONF_INTAKE_SWITCH = "intake_switch"  # the fan that blows outdoor air in (outside-in)
 CONF_INSIDE_SENSOR = "inside_sensor"  # probe at the basement end of the core
 CONF_OUTSIDE_SENSOR = "outside_sensor"  # probe at the outdoor end of the core
+CONF_PASSIVE_INTAKE = "passive_intake"  # intake with the intake fan off (passive re-ventilation)
 CONF_PALETTE = "diagram_palette"  # the diagram's colour scale, as text (see diagram.py)
 
 # -- modes ---------------------------------------------------------------------
@@ -97,18 +98,20 @@ class Setting:
 
 SETTINGS: tuple[Setting, ...] = (
     Setting("recovery_percent", 80, 5, 100, 1, "%", "mdi:percent"),
-    Setting("settle_seconds", 15, 5, 120, 1, "s", "mdi:timer-sand"),
+    Setting("settle_seconds", 15, 5, 1800, 1, "s", "mdi:timer-sand"),
     Setting("settle_delta", 0.2, 0.05, 2.0, 0.05, "°C", "mdi:thermometer-minus"),
-    Setting("min_phase_seconds", 20, 5, 300, 1, "s", "mdi:timer-outline"),
-    Setting("max_phase_seconds", 120, 10, 900, 1, "s", "mdi:timer-alert-outline"),
+    Setting("min_phase_seconds", 20, 5, 3600, 1, "s", "mdi:timer-outline"),
+    Setting("max_phase_seconds", 120, 10, 86400, 1, "s", "mdi:timer-alert-outline"),
     Setting("pause_seconds", 1, 0, 30, 0.5, "s", "mdi:pause-circle-outline"),
-    Setting("timed_phase_seconds", 60, 10, 900, 1, "s", "mdi:timer-cog-outline"),
+    Setting("timed_phase_seconds", 60, 10, 86400, 1, "s", "mdi:timer-cog-outline"),
     Setting("similar_band", 2.0, 0, 20, 0.1, "°C", "mdi:approximately-equal"),
     Setting("cold_threshold", -5, -40, 15, 0.5, "°C", "mdi:snowflake-thermometer"),
-    Setting("cold_intake_max_seconds", 300, 10, 900, 1, "s", "mdi:snowflake-alert"),
+    Setting("cold_intake_max_seconds", 300, 10, 86400, 1, "s", "mdi:snowflake-alert"),
     Setting("cold_exhaust_extra_seconds", 7, 0, 60, 1, "s", "mdi:snowflake-melt"),
     Setting("max_supply_drop", 3.0, 0.5, 20, 0.5, "°C", "mdi:thermometer-chevron-down"),
     Setting("min_supply_temperature", -30, -30, 25, 0.5, "°C", "mdi:home-thermometer-outline"),
+    Setting("passive_intake_max_seconds", 1800, 60, 86400, 60, "s", "mdi:timer-sand-complete"),
+    Setting("passive_flow_delta", 0.3, 0.05, 5, 0.05, "°C", "mdi:weather-windy"),
 )
 
 SETTINGS_BY_KEY: dict[str, Setting] = {s.key: s for s in SETTINGS}

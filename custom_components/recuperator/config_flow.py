@@ -18,6 +18,7 @@ from .const import (
     CONF_INTAKE_SWITCH,
     CONF_OUTSIDE_SENSOR,
     CONF_PALETTE,
+    CONF_PASSIVE_INTAKE,
     DEFAULTS,
     DOMAIN,
     SETTINGS,
@@ -143,6 +144,9 @@ class RecuperatorOptionsFlow(OptionsFlow):
             if s.unit:
                 cfg["unit_of_measurement"] = s.unit
             schema[vol.Required(s.key, default=current[s.key])] = selector.NumberSelector(cfg)
+        schema[vol.Optional(CONF_PASSIVE_INTAKE, default=bool(current.get(CONF_PASSIVE_INTAKE, False)))] = (
+            selector.BooleanSelector()
+        )
         schema[vol.Optional(CONF_RESET, default=False)] = selector.BooleanSelector()
         return self.async_show_form(step_id="settings", data_schema=vol.Schema(schema))
 
