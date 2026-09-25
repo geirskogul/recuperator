@@ -1,0 +1,178 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Add a recuperator",
+        "description": "Pick the two fans and the two temperature probes. The inside probe sits at the basement end of the core, the outside probe at the outdoor end. Breathing starts switched off; turn on the Breathing switch when ready.",
+        "data": {
+          "name": "Name",
+          "exhaust_switch": "Exhaust fan (inside to outside)",
+          "intake_switch": "Intake fan (outside to inside)",
+          "inside_sensor": "Inside probe (basement end of the core)",
+          "outside_sensor": "Outside probe (outdoor end of the core)"
+        },
+        "data_description": {
+          "exhaust_switch": "The switch, fan or light that blows basement air out through the core.",
+          "intake_switch": "The switch, fan or light that blows outdoor air in through the core.",
+          "inside_sensor": "Reads basement air while exhausting.",
+          "outside_sensor": "Reads outdoor air while taking air in."
+        }
+      },
+      "reconfigure": {
+        "title": "Change fans or probes",
+        "description": "Point this recuperator at different fans or probes. Settings are kept.",
+        "data": {
+          "exhaust_switch": "Exhaust fan (inside to outside)",
+          "intake_switch": "Intake fan (outside to inside)",
+          "inside_sensor": "Inside probe (basement end of the core)",
+          "outside_sensor": "Outside probe (outdoor end of the core)"
+        }
+      }
+    },
+    "error": {
+      "same_switch": "The exhaust and intake fans must be different switches.",
+      "same_sensor": "The inside and outside probes must be different sensors."
+    },
+    "abort": {
+      "already_configured": "These fans are already used by another recuperator.",
+      "reconfigure_successful": "Saved. The recuperator restarted with the new fans and probes."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Recuperator settings",
+        "description": "All settings take effect on the next second, without restarting the cycle. They are also available as entities on the device page. Tick 'Reset to defaults' to put everything back.",
+        "data": {
+          "recovery_percent": "Recovery target",
+          "settle_seconds": "Settle window",
+          "settle_delta": "Settle change",
+          "min_phase_seconds": "Minimum phase",
+          "max_phase_seconds": "Maximum phase",
+          "pause_seconds": "Pause",
+          "timed_phase_seconds": "Timed phase",
+          "similar_band": "Similar temperatures",
+          "cold_threshold": "Cold threshold",
+          "cold_intake_max_seconds": "Cold intake limit",
+          "cold_exhaust_extra_seconds": "Cold exhaust extra",
+          "reset_to_defaults": "Reset to defaults"
+        },
+        "data_description": {
+          "recovery_percent": "End a phase once the far probe has closed this much of the gap to the near probe. Higher: longer phases, more heat kept, fewer switches.",
+          "settle_seconds": "The far probe counts as settled if it moved less than the settle change over this many seconds.",
+          "settle_delta": "How little the far probe may move during the settle window to count as settled (ended early because the core has done all it will).",
+          "min_phase_seconds": "No exhaust or intake phase ends before this, whatever the probes say.",
+          "max_phase_seconds": "No exhaust or intake phase runs longer than this.",
+          "pause_seconds": "Both fans off for this long between phases, so a fan stops before the other starts.",
+          "timed_phase_seconds": "Length of each phase in Timed mode, and whenever the probes cannot be used (inside and outside too similar, or a probe unavailable).",
+          "similar_band": "If the two probes differ by less than this when a phase starts, that phase is timed instead (nothing to recover, e.g. mild weather or hose disconnected).",
+          "cold_threshold": "At or below this outdoor temperature, the cold-weather limits apply.",
+          "cold_intake_max_seconds": "In cold weather, intake never runs longer than this.",
+          "cold_exhaust_extra_seconds": "In cold weather, exhaust runs at least as long as the last intake and at most this much longer.",
+          "reset_to_defaults": "Ignore the values above and restore every setting to its default."
+        }
+      }
+    }
+  },
+  "entity": {
+    "switch": {
+      "breathing": {
+        "name": "Breathing"
+      }
+    },
+    "select": {
+      "mode": {
+        "name": "Mode",
+        "state": {
+          "automatic": "Automatic",
+          "timed": "Timed",
+          "exhaust_only": "Exhaust only",
+          "intake_only": "Intake only"
+        }
+      }
+    },
+    "button": {
+      "reset_settings": {
+        "name": "Reset settings to defaults"
+      }
+    },
+    "binary_sensor": {
+      "cold_weather": {
+        "name": "Cold weather"
+      }
+    },
+    "number": {
+      "recovery_percent": {
+        "name": "Recovery target"
+      },
+      "settle_seconds": {
+        "name": "Settle window"
+      },
+      "settle_delta": {
+        "name": "Settle change"
+      },
+      "min_phase_seconds": {
+        "name": "Minimum phase"
+      },
+      "max_phase_seconds": {
+        "name": "Maximum phase"
+      },
+      "pause_seconds": {
+        "name": "Pause"
+      },
+      "timed_phase_seconds": {
+        "name": "Timed phase"
+      },
+      "similar_band": {
+        "name": "Similar temperatures"
+      },
+      "cold_threshold": {
+        "name": "Cold threshold"
+      },
+      "cold_intake_max_seconds": {
+        "name": "Cold intake limit"
+      },
+      "cold_exhaust_extra_seconds": {
+        "name": "Cold exhaust extra"
+      }
+    },
+    "sensor": {
+      "phase": {
+        "name": "Phase",
+        "state": {
+          "stopped": "Stopped",
+          "exhaust": "Exhaust",
+          "pause": "Pause",
+          "intake": "Intake"
+        }
+      },
+      "last_reason": {
+        "name": "Last change reason",
+        "state": {
+          "recovered": "Recovered",
+          "settled": "Settled",
+          "max_time": "Maximum time",
+          "cold_limit": "Cold limit",
+          "timed": "Timed",
+          "started": "Started",
+          "stopped": "Stopped"
+        }
+      },
+      "last_exhaust": {
+        "name": "Last exhaust"
+      },
+      "last_intake": {
+        "name": "Last intake"
+      },
+      "outdoor_temperature": {
+        "name": "Outdoor temperature"
+      },
+      "basement_temperature": {
+        "name": "Basement temperature"
+      },
+      "recovery": {
+        "name": "Heat recovery"
+      }
+    }
+  }
+}
