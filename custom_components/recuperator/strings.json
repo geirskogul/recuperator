@@ -188,6 +188,11 @@
       "recovery": {
         "name": "Heat recovery"
       }
+    },
+    "image": {
+      "diagram": {
+        "name": "Diagram"
+      }
     }
   }
 }

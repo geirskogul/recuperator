@@ -116,6 +116,7 @@ For a recuperator named *Basement Breather*:
 | `sensor.basement_breather_basement_temperature` | Indoor air temperature: the inside probe at the end of the last exhaust |
 | `sensor.basement_breather_outdoor_temperature` | Outdoor air temperature: the outside probe at the end of the last intake |
 | `sensor.basement_breather_heat_recovery` | How much of the gap the core closed in the last temperature-driven phase (%) |
+| `image.basement_breather_diagram` | A live picture of the pipe, filled with the temperature gradient (see [Diagram](#diagram)) |
 | `binary_sensor.basement_breather_cold_weather` | On while the cold-weather limits apply |
 | `binary_sensor.basement_breather_frost_risk` | On if, in cold weather, the last exhaust never warmed the core's outdoor face above freezing (condensation there can ice up) |
 | `number.basement_breather_...` | One per setting (below), under the device's **Configuration** section |
@@ -219,6 +220,22 @@ The **Last change reason**, **Last exhaust**, **Last intake** and **Heat recover
 - A probe that becomes unavailable does not stop breathing: the phase finishes on time.
 - **Relay wear:** a cycle of about a minute means roughly 2,500 switchings a day per fan. Ordinary relays (for example in smart plugs) are not rated for that for long. For permanent use, switch the fans with solid-state relays, or lengthen the phases (*Minimum phase*, *Recovery target*).
 
+## Diagram
+
+The **Diagram** image entity draws the recuperator as a pipe with pinched ends: the **intake** (outdoor) end on the left, the **exhaust** (room) end on the right. The inside is filled with a gradient from the outside probe's temperature to the inside probe's, in colours approximating the U.S. National Weather Service temperature maps (purple for extreme cold, blues around freezing, greens, yellow, orange, red for heat). The current phase and the airflow direction are shown above it. It redraws when the phase changes, and when the probes change at most every 10 seconds. The gradient is drawn straight between the two probes; the real temperature inside the core is not measured.
+
+![Winter example](docs/diagram-winter.svg)
+![Summer example](docs/diagram-summer.svg)
+
+Show it on a dashboard with a Picture Entity card:
+
+```yaml
+type: picture-entity
+entity: image.basement_breather_diagram
+show_name: false
+show_state: false
+```
+
 ## Dashboard card
 
 ```yaml
@@ -236,6 +253,8 @@ entities:
   - sensor.basement_breather_outdoor_temperature
   - binary_sensor.basement_breather_cold_weather
 ```
+
+Add the diagram above it with the Picture Entity card from [Diagram](#diagram).
 
 Add a *history-graph* card with the two probes and `sensor.basement_breather_phase` to see the cycle.
 
