@@ -18,6 +18,7 @@ PLATFORMS: list[Platform] = [
     Platform.SELECT,
     Platform.SENSOR,
     Platform.SWITCH,
+    Platform.TEXT,
 ]
 
 # -- what the user picks when adding the integration ---------------------------
@@ -26,6 +27,7 @@ CONF_EXHAUST_SWITCH = "exhaust_switch"  # the fan that blows basement air out (i
 CONF_INTAKE_SWITCH = "intake_switch"  # the fan that blows outdoor air in (outside-in)
 CONF_INSIDE_SENSOR = "inside_sensor"  # probe at the basement end of the core
 CONF_OUTSIDE_SENSOR = "outside_sensor"  # probe at the outdoor end of the core
+CONF_PALETTE = "diagram_palette"  # the diagram's colour scale, as text (see diagram.py)
 
 # -- modes ---------------------------------------------------------------------
 

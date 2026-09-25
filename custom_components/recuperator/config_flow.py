@@ -11,11 +11,13 @@ from homeassistant.const import CONF_NAME
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
+from .diagram import PALETTE, palette_to_text, parse_palette
 from .const import (
     CONF_EXHAUST_SWITCH,
     CONF_INSIDE_SENSOR,
     CONF_INTAKE_SWITCH,
     CONF_OUTSIDE_SENSOR,
+    CONF_PALETTE,
     DEFAULTS,
     DOMAIN,
     SETTINGS,
@@ -103,11 +105,20 @@ class RecuperatorOptionsFlow(OptionsFlow):
     """Configure: every tunable setting on one screen, plus reset to defaults."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        errors: dict[str, str] = {}
         if user_input is not None:
             if user_input.pop(CONF_RESET, False):
                 return self.async_create_entry(data=dict(DEFAULTS))
-            return self.async_create_entry(data={**DEFAULTS, **user_input})
-        current = {**DEFAULTS, **self.config_entry.options}
+            data = {**DEFAULTS, **user_input}
+            try:
+                palette = parse_palette(data.pop(CONF_PALETTE, "") or palette_to_text())
+            except ValueError:
+                errors[CONF_PALETTE] = "invalid_palette"
+            else:
+                if palette != PALETTE:
+                    data[CONF_PALETTE] = palette_to_text(palette)
+                return self.async_create_entry(data=data)
+        current = {**DEFAULTS, **self.config_entry.options, **(user_input or {})}
         schema: dict = {}
         for s in SETTINGS:
             cfg = selector.NumberSelectorConfig(
@@ -116,5 +127,8 @@ class RecuperatorOptionsFlow(OptionsFlow):
             if s.unit:
                 cfg["unit_of_measurement"] = s.unit
             schema[vol.Required(s.key, default=current[s.key])] = selector.NumberSelector(cfg)
+        schema[vol.Optional(CONF_PALETTE, default=current.get(CONF_PALETTE) or palette_to_text())] = (
+            selector.TextSelector(selector.TextSelectorConfig(multiline=True))
+        )
         schema[vol.Optional(CONF_RESET, default=False)] = selector.BooleanSelector()
-        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema))
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema), errors=errors)

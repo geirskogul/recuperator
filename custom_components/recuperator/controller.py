@@ -27,6 +27,7 @@ from .const import (
     CONF_INSIDE_SENSOR,
     CONF_INTAKE_SWITCH,
     CONF_OUTSIDE_SENSOR,
+    CONF_PALETTE,
     DEFAULTS,
     MODE_AUTOMATIC,
     PHASE_EXHAUST,
@@ -34,6 +35,7 @@ from .const import (
     SETTINGS_BY_KEY,
     STARTUP_WAIT_SECONDS,
 )
+from .diagram import PALETTE, Palette, palette_to_text, parse_palette
 from .logic import INSIDE, OUTSIDE, BreathingLogic, Settings
 
 _LOGGER = logging.getLogger(__name__)
@@ -80,6 +82,25 @@ class RecuperatorController:
         self.hass.config_entries.async_update_entry(
             self.entry, options={**self.entry.options, key: value}
         )
+
+    @property
+    def palette(self) -> Palette:
+        """The diagram's colour scale: the stored one if valid, otherwise the default."""
+        text = self.entry.options.get(CONF_PALETTE)
+        if not text:
+            return PALETTE
+        try:
+            return parse_palette(text)
+        except ValueError:
+            return PALETTE
+
+    async def async_set_palette(self, text: str) -> None:
+        """Store a new colour scale (raises ValueError if it cannot be read)."""
+        palette = parse_palette(text)
+        options = {**self.entry.options, CONF_PALETTE: palette_to_text(palette)}
+        if palette == PALETTE:
+            options.pop(CONF_PALETTE, None)
+        self.hass.config_entries.async_update_entry(self.entry, options=options)
 
     async def async_reset_settings(self) -> None:
         """Put every setting back to its default."""

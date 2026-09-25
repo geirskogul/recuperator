@@ -57,7 +57,8 @@
           "cold_exhaust_extra_seconds": "Cold exhaust extra",
           "reset_to_defaults": "Reset to defaults",
           "min_supply_temperature": "Minimum supply temperature",
-          "max_supply_drop": "Maximum supply drop"
+          "max_supply_drop": "Maximum supply drop",
+          "diagram_palette": "Diagram colours"
         },
         "data_description": {
           "recovery_percent": "End a phase once the far probe has closed this much of the gap. Low (10-25%): switch as soon as the far end of the core starts to change, best heat recovery, shorter phases. High (80%+): let the core fill up, longer phases, more heat lost at the end of each phase.",
@@ -73,9 +74,13 @@
           "cold_exhaust_extra_seconds": "In cold weather, exhaust runs at least as long as the last intake and at most this much longer.",
           "reset_to_defaults": "Ignore the values above and restore every setting to its default.",
           "min_supply_temperature": "Optional hard floor: the intake also ends if the air entering the room drops below this temperature. -30 (the default) means off. Only set it if there is a temperature the room must never see, e.g. near water pipes.",
-          "max_supply_drop": "During intake the inside probe reads the air entering the room. Once the minimum phase has passed, the intake ends if that air is more than this much colder than the room (the basement temperature from the last exhaust). Works in any season: it follows the room, so a cold room still breathes."
+          "max_supply_drop": "During intake the inside probe reads the air entering the room. Once the minimum phase has passed, the intake ends if that air is more than this much colder than the room (the basement temperature from the last exhaust). Works in any season: it follows the room, so a cold room still breathes.",
+          "diagram_palette": "The colour scale of the Diagram: one stop per line, a temperature in °C and a #rrggbb colour, e.g. \"-40 #e3c6f5\". Temperatures must rise from line to line; colours in between are blended. The default approximates the U.S. National Weather Service temperature maps. Reset to defaults restores it."
         }
       }
+    },
+    "error": {
+      "invalid_palette": "Could not read the diagram colours. Use one line per stop, like \"-40 #e3c6f5\", with temperatures rising and six-digit colours."
     }
   },
   "entity": {
@@ -192,6 +197,11 @@
     "image": {
       "diagram": {
         "name": "Diagram"
+      }
+    },
+    "text": {
+      "diagram_palette": {
+        "name": "Diagram colours"
       }
     }
   }

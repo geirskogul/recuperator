@@ -8,6 +8,7 @@ Pure Python (no Home Assistant), so it can be tested and previewed directly.
 from __future__ import annotations
 
 from html import escape
+import re
 
 # Temperature colour scale approximating the U.S. National Weather Service
 # temperature-map palette: lavender and purple for extreme cold, blues for
@@ -31,6 +32,37 @@ PALETTE: tuple[tuple[float, str], ...] = (
     (46, "#7b0b43"),
 )
 
+Palette = tuple[tuple[float, str], ...]
+
+_LINE = re.compile(r"^\s*(-?\d+(?:\.\d+)?)\s*[:=,\s]\s*(#[0-9a-fA-F]{6})\s*$")
+
+
+def palette_to_text(palette: Palette = PALETTE) -> str:
+    """One "temperature colour" pair per line, as shown in the settings."""
+    return "\n".join(f"{t:g} {c}" for t, c in palette)
+
+
+def parse_palette(text: str) -> Palette:
+    """Read a palette from settings text. Raises ValueError with a reason if invalid.
+
+    One stop per line: a temperature in °C and a #rrggbb colour, e.g. "-40 #e3c6f5".
+    At least two stops, temperatures rising.
+    """
+    stops: list[tuple[float, str]] = []
+    for n, line in enumerate(re.split(r"[\n;]", text), 1):
+        if not line.strip():
+            continue
+        m = _LINE.match(line)
+        if not m:
+            raise ValueError(f"line {n}: expected a temperature and a #rrggbb colour, got {line.strip()!r}")
+        stops.append((float(m.group(1)), m.group(2).lower()))
+    if len(stops) < 2:
+        raise ValueError("at least two stops are needed")
+    if any(b[0] <= a[0] for a, b in zip(stops, stops[1:])):
+        raise ValueError("the temperatures must rise from one line to the next")
+    return tuple(stops)
+
+
 NEUTRAL = "#9aa0a6"  # pipe fill when a probe is unavailable
 TEXT = "#8a9199"  # readable on both light and dark dashboards
 OUTLINE = "#6b7280"
@@ -40,13 +72,13 @@ def _hex(c: str) -> tuple[int, int, int]:
     return int(c[1:3], 16), int(c[3:5], 16), int(c[5:7], 16)
 
 
-def temperature_colour(celsius: float) -> str:
+def temperature_colour(celsius: float, palette: Palette = PALETTE) -> str:
     """The palette colour for a temperature, interpolated between steps."""
-    if celsius <= PALETTE[0][0]:
-        return PALETTE[0][1]
-    if celsius >= PALETTE[-1][0]:
-        return PALETTE[-1][1]
-    for (t0, c0), (t1, c1) in zip(PALETTE, PALETTE[1:]):
+    if celsius <= palette[0][0]:
+        return palette[0][1]
+    if celsius >= palette[-1][0]:
+        return palette[-1][1]
+    for (t0, c0), (t1, c1) in zip(palette, palette[1:]):
         if t0 <= celsius <= t1:
             f = (celsius - t0) / (t1 - t0)
             a, b = _hex(c0), _hex(c1)
@@ -54,7 +86,9 @@ def temperature_colour(celsius: float) -> str:
     return NEUTRAL
 
 
-def _stops(left: float | None, right: float | None, n: int = 16) -> list[tuple[float, str]]:
+def _stops(
+    left: float | None, right: float | None, n: int = 16, palette: Palette = PALETTE
+) -> list[tuple[float, str]]:
     """Gradient stops from the left temperature to the right one.
 
     The temperature is interpolated in °C and each step mapped through the
@@ -62,7 +96,10 @@ def _stops(left: float | None, right: float | None, n: int = 16) -> list[tuple[f
     """
     if left is None or right is None:
         return [(0.0, NEUTRAL), (1.0, NEUTRAL)]
-    return [(i / (n - 1), temperature_colour(left + (right - left) * i / (n - 1))) for i in range(n)]
+    return [
+        (i / (n - 1), temperature_colour(left + (right - left) * i / (n - 1), palette))
+        for i in range(n)
+    ]
 
 
 # Pipe outline (viewBox 0 0 640 240): necks, tapers ("pinched" ends) and body.
@@ -89,6 +126,7 @@ def render_svg(
     inside: float | None,
     phase: str = "stopped",
     title: str = "",
+    palette: Palette = PALETTE,
 ) -> str:
     """The whole picture as an SVG document.
 
@@ -96,7 +134,7 @@ def render_svg(
     Right end: outside (outdoor side of the core, outside probe).
     """
     stops = "".join(
-        f'<stop offset="{o:.3f}" stop-color="{c}"/>' for o, c in _stops(inside, outside)
+        f'<stop offset="{o:.3f}" stop-color="{c}"/>' for o, c in _stops(inside, outside, palette=palette)
     )
     # Airflow arrow above the pipe: exhaust runs inside to outside (left to right),
     # intake runs outside to inside (right to left).

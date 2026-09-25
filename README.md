@@ -117,6 +117,7 @@ For a recuperator named *Basement Breather*:
 | `sensor.basement_breather_outdoor_temperature` | Outdoor air temperature: the outside probe at the end of the last intake |
 | `sensor.basement_breather_heat_recovery` | How much of the gap the core closed in the last temperature-driven phase (%) |
 | `image.basement_breather_diagram` | A live picture of the pipe, filled with the temperature gradient (see [Diagram](#diagram)) |
+| `text.basement_breather_diagram_colours` | The diagram's colour scale, editable (see [Diagram colours](#diagram-colours)) |
 | `binary_sensor.basement_breather_cold_weather` | On while the cold-weather limits apply |
 | `binary_sensor.basement_breather_frost_risk` | On if, in cold weather, the last exhaust never warmed the core's outdoor face above freezing (condensation there can ice up) |
 | `number.basement_breather_...` | One per setting (below), under the device's **Configuration** section |
@@ -153,6 +154,7 @@ All settings take effect within a second, without restarting the cycle. Change t
 | Cold intake limit | 300 s | 10–900 | In cold weather, intake never runs longer than this. Leave enough time for fresh air to get through the ducting (see [Winter](#winter)) |
 | Cold exhaust extra | 7 s | 0–60 | In cold weather, exhaust runs at least as long as the last intake and at most this much longer |
 | Maximum supply drop | 3 °C | 0.5–20 | During intake, once *Minimum phase* has passed, end the intake if the air entering the room is more than this much colder than the room (the basement temperature measured at the end of the last exhaust). Follows the room, so it works in every season. **The main draught protection.** |
+| Diagram colours | weather-service scale | text | The diagram's colour stops (see [Diagram colours](#diagram-colours)) |
 | Minimum supply temperature | −30 °C (off) | −30–25 | Optional hard floor: the intake also ends if the air entering the room drops below this. Only set it if there is a temperature the room must never see (for example water pipes). |
 
 ## Choosing the recovery target
@@ -226,6 +228,20 @@ The **Diagram** image entity draws the recuperator as a pipe with pinched ends: 
 
 ![Winter example](docs/diagram-winter.svg)
 ![Summer example](docs/diagram-summer.svg)
+
+### Diagram colours
+
+Both the temperature setpoints and their colours can be changed:
+- **Configure**, the **Diagram colours** box: one stop per line, a temperature in °C and a `#rrggbb` colour, for example `-40 #e3c6f5`.
+- Or the **Diagram colours** text entity on the device page: the same on one line, stops separated by `;`, for example `-10 #2f6fdc; 5 #3cc4c6; 20 #f1e344; 35 #d9401f`.
+
+Temperatures must rise from one stop to the next; colours in between are blended, and temperatures beyond the ends use the end colours. An invalid scale is refused, and the old one is kept. **Reset settings to defaults** restores the weather-service scale. The diagram redraws as soon as the colours change.
+
+The default scale:
+
+| °C | −40 | −30 | −20 | −12 | −5 | 0 | 5 | 10 | 15 | 20 | 25 | 30 | 35 | 40 | 46 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| colour | `#e3c6f5` | `#b07ad6` | `#6f3fb4` | `#3a3fbf` | `#2f6fdc` | `#4fa3ec` | `#3cc4c6` | `#46bf62` | `#9fd34a` | `#f1e344` | `#f6b637` | `#ee7f25` | `#d9401f` | `#a8161f` | `#7b0b43` |
 
 Show it on a dashboard with a Picture Entity card:
 
