@@ -1,3 +1,5 @@
+<img src="custom_components/recuperator/brand/icon.png" alt="" width="96" align="right">
+
 # Recuperator
 
 A Home Assistant integration that runs a **single-tube ceramic recuperator** (a small heat-recovery ventilator) as a continuous **breathing cycle**:
