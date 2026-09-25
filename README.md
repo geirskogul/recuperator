@@ -118,6 +118,7 @@ For a recuperator named *Basement Breather*:
 | `sensor.basement_breather_heat_recovery` | How much of the gap the core closed in the last temperature-driven phase (%) |
 | `image.basement_breather_diagram` | A live picture of the pipe, filled with the temperature gradient (see [Diagram](#diagram)) |
 | `image.basement_breather_diagram_replay` | The last animated replay made with **Create replay** (see [Replay](#replay-watch-it-breathe)) |
+| `button.basement_breather_create_replay` | Makes a new replay with the saved replay settings |
 | `text.basement_breather_diagram_colours` | The diagram's colour scale, editable (see [Diagram colours](#diagram-colours)) |
 | `switch.basement_breather_passive_intake` | **Passive intake** on/off (see [Passive intake](#passive-intake)) |
 | `binary_sensor.basement_breather_passive_inflow` | On if air was seen flowing in during the running or last passive intake |
@@ -161,6 +162,9 @@ All settings take effect within a second, without restarting the cycle. Change t
 | Passive intake | off | on/off | Intake phases run with the intake fan **off** (see [Passive intake](#passive-intake)) |
 | Passive intake maximum | 1800 s (30 min) | 60–86400 | The longest a passive intake may last |
 | Passive inflow change | 0.3 °C | 0.05–5 | How far the inside probe must move towards the outdoor temperature during a passive intake to count as air flowing in |
+| Replay hours | 24 h | 0.25–168 | How much history the Create replay button replays (saved from the last action call) |
+| Replay playback length | 60 s | 5–900 | Length of one replay loop |
+| Replay frames | 0 (auto) | 0–1440 | Frames per replay (0 = one per minute of history) |
 | Diagram colours | weather-service scale | text | The diagram's colour stops (see [Diagram colours](#diagram-colours)) |
 | Minimum supply temperature | −30 °C (off) | −30–25 | Optional hard floor: the intake also ends if the air entering the room drops below this. Only set it if there is a temperature the room must never see (for example water pipes). |
 
@@ -283,6 +287,26 @@ data:
   # end: "2026-09-25 08:00:00"   # optional, default now
   # frames: 0            # 0 = one per minute of history (60 to 1440)
 ```
+
+**Create replay button:** the device also has a **Create replay** button, which makes a new replay with the **saved replay settings**: *Replay hours*, *Replay playback length* and *Replay frames*. These are the last values given to the action (a call without values uses them as well), and you can also change them as numbers on the device page or in Configure, Settings.
+
+A dashboard with the replay and a button under it to make a fresh one at will (the image refreshes by itself when the new replay is ready):
+
+```yaml
+type: vertical-stack
+cards:
+  - type: picture
+    image_entity: image.basement_breather_diagram_replay
+  - type: button
+    entity: button.basement_breather_create_replay
+    name: New replay
+    icon: mdi:movie-open-play-outline
+    show_state: false
+    tap_action:
+      action: toggle
+```
+
+(For a button entity, `toggle` presses it.)
 
 The result:
 - appears in the **Diagram replay** image entity. Show it with a Picture Entity card, like the live diagram:

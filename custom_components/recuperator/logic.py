@@ -18,7 +18,7 @@ limit is reached. A short pause with both fans off always separates phases.
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 
 from .const import (
     DEFAULTS,
@@ -75,8 +75,9 @@ class Settings:
     @classmethod
     def from_mapping(cls, values: dict) -> Settings:
         """Build from a dict of stored options, filling gaps with defaults."""
+        own = {f.name for f in fields(cls)}
         return cls(
-            **{k: float(values.get(k, v)) for k, v in DEFAULTS.items()},
+            **{k: float(values.get(k, v)) for k, v in DEFAULTS.items() if k in own},
             passive_intake=bool(values.get("passive_intake", False)),
         )
 

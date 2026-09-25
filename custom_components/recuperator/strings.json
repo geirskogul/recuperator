@@ -68,7 +68,10 @@
           "max_supply_drop": "Maximum supply drop",
           "passive_intake": "Passive intake (intake fan off)",
           "passive_intake_max_seconds": "Passive intake maximum",
-          "passive_flow_delta": "Passive inflow change"
+          "passive_flow_delta": "Passive inflow change",
+          "replay_hours": "Replay hours",
+          "replay_playback_seconds": "Replay playback length",
+          "replay_frames": "Replay frames"
         },
         "data_description": {
           "recovery_percent": "End a phase once the far probe has closed this much of the gap. Low (10-25%): switch as soon as the far end of the core starts to change, best heat recovery, shorter phases. High (80%+): let the core fill up, longer phases, more heat lost at the end of each phase.",
@@ -87,7 +90,10 @@
           "max_supply_drop": "During intake the inside probe reads the air entering the room. Once the minimum phase has passed, the intake ends if that air is more than this much colder than the room (the basement temperature from the last exhaust). Works in any season: it follows the room, so a cold room still breathes.",
           "passive_intake": "Intake phases run with the intake fan off: after each exhaust, the room refills on its own through the core, for up to the passive intake maximum. The exhaust fan works as usual. Passive inflow shows whether air really came in.",
           "passive_intake_max_seconds": "With passive intake on, the longest an intake phase may last (it can end sooner by the usual rules: recovery target, settled, supply drop, cold limits).",
-          "passive_flow_delta": "During a passive intake, the inside probe moving this much towards the outdoor temperature counts as air flowing in."
+          "passive_flow_delta": "During a passive intake, the inside probe moving this much towards the outdoor temperature counts as air flowing in.",
+          "replay_hours": "How much history the Create replay button replays. Also saved from the last Create replay action.",
+          "replay_playback_seconds": "How long one loop of the replay lasts.",
+          "replay_frames": "Number of frames (0 = one per minute of history, 60 to 1440)."
         }
       },
       "colours": {
@@ -170,6 +176,9 @@
     "button": {
       "reset_settings": {
         "name": "Reset settings to defaults"
+      },
+      "create_replay": {
+        "name": "Create replay"
       }
     },
     "binary_sensor": {
@@ -228,6 +237,15 @@
       },
       "passive_flow_delta": {
         "name": "Passive inflow change"
+      },
+      "replay_hours": {
+        "name": "Replay hours"
+      },
+      "replay_playback_seconds": {
+        "name": "Replay playback length"
+      },
+      "replay_frames": {
+        "name": "Replay frames"
       }
     },
     "sensor": {
@@ -290,7 +308,7 @@
   "services": {
     "create_replay": {
       "name": "Create replay",
-      "description": "Builds an animated diagram from recorded history, so you can watch the recuperator breathe. The result appears in the Diagram replay image and is saved under /local/recuperator/.",
+      "description": "Builds an animated diagram from recorded history, so you can watch the recuperator breathe. The result appears in the Diagram replay image and is saved under /local/recuperator/. Values you give are remembered and used by the Create replay button; values left out use the saved ones.",
       "fields": {
         "config_entry_id": {
           "name": "Recuperator",
@@ -298,7 +316,7 @@
         },
         "hours": {
           "name": "Hours",
-          "description": "How much history to replay, ending at End (or now)."
+          "description": "How much history to replay, ending at End (or now). Left out: the saved value (default 24)."
         },
         "end": {
           "name": "End",
@@ -306,11 +324,11 @@
         },
         "playback_seconds": {
           "name": "Playback length",
-          "description": "How long one loop of the animation lasts."
+          "description": "How long one loop of the animation lasts. Left out: the saved value (default 60)."
         },
         "frames": {
           "name": "Frames",
-          "description": "Number of frames (0 = one per minute of history, at least 60, at most 1440)."
+          "description": "Number of frames (0 = one per minute of history, 60 to 1440). Left out: the saved value."
         }
       }
     }

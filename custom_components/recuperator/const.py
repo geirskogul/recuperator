@@ -112,6 +112,10 @@ SETTINGS: tuple[Setting, ...] = (
     Setting("min_supply_temperature", -30, -30, 25, 0.5, "°C", "mdi:home-thermometer-outline"),
     Setting("passive_intake_max_seconds", 1800, 60, 86400, 60, "s", "mdi:timer-sand-complete"),
     Setting("passive_flow_delta", 0.3, 0.05, 5, 0.05, "°C", "mdi:weather-windy"),
+    # Replay: used by the Create replay button, and saved from the last Create replay action.
+    Setting("replay_hours", 24, 0.25, 168, 0.25, "h", "mdi:history"),
+    Setting("replay_playback_seconds", 60, 5, 900, 1, "s", "mdi:play-speed"),
+    Setting("replay_frames", 0, 0, 1440, 1, None, "mdi:filmstrip"),
 )
 
 SETTINGS_BY_KEY: dict[str, Setting] = {s.key: s for s in SETTINGS}

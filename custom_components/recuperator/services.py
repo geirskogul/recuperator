@@ -27,12 +27,15 @@ ATTR_FRAMES = "frames"
 SCHEMA = vol.Schema(
     {
         vol.Optional(ATTR_CONFIG_ENTRY): cv.string,
-        vol.Optional(ATTR_HOURS, default=24): vol.All(vol.Coerce(float), vol.Range(min=0.25, max=168)),
+        vol.Optional(ATTR_HOURS): vol.All(vol.Coerce(float), vol.Range(min=0.25, max=168)),
         vol.Optional(ATTR_END): cv.datetime,
-        vol.Optional(ATTR_PLAYBACK, default=60): vol.All(vol.Coerce(float), vol.Range(min=5, max=900)),
-        vol.Optional(ATTR_FRAMES, default=0): vol.All(vol.Coerce(int), vol.Range(min=0, max=MAX_FRAMES)),
+        vol.Optional(ATTR_PLAYBACK): vol.All(vol.Coerce(float), vol.Range(min=5, max=900)),
+        vol.Optional(ATTR_FRAMES): vol.All(vol.Coerce(int), vol.Range(min=0, max=MAX_FRAMES)),
     }
 )
+
+# action field -> stored setting (the last values used are remembered)
+SAVED = {ATTR_HOURS: "replay_hours", ATTR_PLAYBACK: "replay_playback_seconds", ATTR_FRAMES: "replay_frames"}
 
 
 def _float(value):
@@ -48,16 +51,28 @@ async def _async_create_replay(hass: HomeAssistant, call: ServiceCall) -> Servic
         entries = [e for e in entries if e.entry_id == wanted]
     if not entries:
         raise ServiceValidationError("No loaded recuperator found.")
+    entry = entries[0]
+    # Remember the values given, so the Create replay button reuses them.
+    given = {SAVED[k]: call.data[k] for k in SAVED if k in call.data}
+    if given:
+        hass.config_entries.async_update_entry(entry, options={**entry.options, **given})
+    return await async_create_replay(hass, entry, end=call.data.get(ATTR_END))
+
+
+async def async_create_replay(hass: HomeAssistant, entry, end=None) -> dict:
+    """Build a replay for one recuperator with its saved replay settings."""
     if "recorder" not in hass.config.components:
         raise ServiceValidationError("The replay needs Home Assistant's recorder (history).")
     from homeassistant.components.recorder import get_instance, history
 
-    entry = entries[0]
     controller = entry.runtime_data
-    end = call.data.get(ATTR_END) or dt_util.utcnow()
+    hours = controller.setting("replay_hours")
+    playback = controller.setting("replay_playback_seconds")
+    frames_wanted = int(controller.setting("replay_frames"))
+    end = end or dt_util.utcnow()
     end = dt_util.as_utc(end if end.tzinfo else dt_util.as_local(end))
-    start = end - timedelta(hours=call.data[ATTR_HOURS])
-    count = call.data[ATTR_FRAMES] or min(MAX_FRAMES, max(60, int(call.data[ATTR_HOURS] * 60)))
+    start = end - timedelta(hours=hours)
+    count = frames_wanted or min(MAX_FRAMES, max(60, int(hours * 60)))
 
     phase_id = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_phase")
     ids = [controller.inside_sensor, controller.outside_sensor] + ([phase_id] if phase_id else [])
@@ -76,7 +91,7 @@ async def _async_create_replay(hass: HomeAssistant, call: ServiceCall) -> Servic
         Frame(dt_util.as_local(t), _float(i), _float(o), p or "stopped")
         for t, i, o, p in zip(times, inside, outside, phase)
     ]
-    svg = render_replay_svg(frames, call.data[ATTR_PLAYBACK], entry.title, controller.palette)
+    svg = render_replay_svg(frames, playback, entry.title, controller.palette)
 
     # Also save it where Home Assistant serves files: /config/www -> /local/
     name = f"{slugify(entry.title)}-replay.svg"
@@ -95,7 +110,7 @@ async def _async_create_replay(hass: HomeAssistant, call: ServiceCall) -> Servic
         "start": dt_util.as_local(start).isoformat(),
         "end": dt_util.as_local(end).isoformat(),
         "frames": len(frames),
-        "playback_seconds": call.data[ATTR_PLAYBACK],
+        "playback_seconds": playback,
     }
 
 

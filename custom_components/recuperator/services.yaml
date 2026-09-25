@@ -5,7 +5,6 @@ create_replay:
         config_entry:
           integration: recuperator
     hours:
-      default: 24
       selector:
         number:
           min: 0.25
@@ -17,7 +16,6 @@ create_replay:
       selector:
         datetime:
     playback_seconds:
-      default: 60
       selector:
         number:
           min: 5
@@ -25,7 +23,6 @@ create_replay:
           unit_of_measurement: s
           mode: box
     frames:
-      default: 0
       selector:
         number:
           min: 0
