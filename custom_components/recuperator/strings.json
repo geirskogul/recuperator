@@ -41,8 +41,16 @@
   "options": {
     "step": {
       "init": {
+        "title": "Recuperator",
+        "description": "What would you like to change?",
+        "menu_options": {
+          "settings": "Settings",
+          "colours": "Diagram colours"
+        }
+      },
+      "settings": {
         "title": "Recuperator settings",
-        "description": "All settings take effect on the next second, without restarting the cycle. They are also available as entities on the device page. Tick 'Reset to defaults' to put everything back.",
+        "description": "All settings take effect within a second, without restarting the cycle. They are also available as entities on the device page.",
         "data": {
           "recovery_percent": "Recovery target",
           "settle_seconds": "Settle window",
@@ -55,10 +63,9 @@
           "cold_threshold": "Cold threshold",
           "cold_intake_max_seconds": "Cold intake limit",
           "cold_exhaust_extra_seconds": "Cold exhaust extra",
-          "reset_to_defaults": "Reset to defaults",
+          "reset_to_defaults": "Reset settings to defaults",
           "min_supply_temperature": "Minimum supply temperature",
-          "max_supply_drop": "Maximum supply drop",
-          "diagram_palette": "Diagram colours"
+          "max_supply_drop": "Maximum supply drop"
         },
         "data_description": {
           "recovery_percent": "End a phase once the far probe has closed this much of the gap. Low (10-25%): switch as soon as the far end of the core starts to change, best heat recovery, shorter phases. High (80%+): let the core fill up, longer phases, more heat lost at the end of each phase.",
@@ -72,15 +79,66 @@
           "cold_threshold": "At or below this outdoor temperature, the cold-weather limits apply.",
           "cold_intake_max_seconds": "In cold weather, intake never runs longer than this. Allow enough time for fresh air to get through the ducting (several minutes with long hoses or slow fans); Maximum supply drop protects the room.",
           "cold_exhaust_extra_seconds": "In cold weather, exhaust runs at least as long as the last intake and at most this much longer.",
-          "reset_to_defaults": "Ignore the values above and restore every setting to its default.",
+          "reset_to_defaults": "Ignore the values above and restore every numeric setting to its default. The diagram colours are kept.",
           "min_supply_temperature": "Optional hard floor: the intake also ends if the air entering the room drops below this temperature. -30 (the default) means off. Only set it if there is a temperature the room must never see, e.g. near water pipes.",
-          "max_supply_drop": "During intake the inside probe reads the air entering the room. Once the minimum phase has passed, the intake ends if that air is more than this much colder than the room (the basement temperature from the last exhaust). Works in any season: it follows the room, so a cold room still breathes.",
-          "diagram_palette": "The colour scale of the Diagram: one stop per line, a temperature in °C and a #rrggbb colour, e.g. \"-40 #e3c6f5\". Temperatures must rise from line to line; colours in between are blended. The default approximates the U.S. National Weather Service temperature maps. Reset to defaults restores it."
+          "max_supply_drop": "During intake the inside probe reads the air entering the room. Once the minimum phase has passed, the intake ends if that air is more than this much colder than the room (the basement temperature from the last exhaust). Works in any season: it follows the room, so a cold room still breathes."
+        }
+      },
+      "colours": {
+        "title": "Diagram colours",
+        "description": "Each stop is a temperature and the colour shown at that temperature; colours in between are blended. Pick a colour with the colour box, clear a temperature to remove its stop, or fill in an empty row to add one. The order does not matter: stops are sorted by temperature. At least two stops are needed.",
+        "data": {
+          "stop_01_temperature": "Stop 1: temperature",
+          "stop_01_colour": "Stop 1: colour",
+          "stop_02_temperature": "Stop 2: temperature",
+          "stop_02_colour": "Stop 2: colour",
+          "stop_03_temperature": "Stop 3: temperature",
+          "stop_03_colour": "Stop 3: colour",
+          "stop_04_temperature": "Stop 4: temperature",
+          "stop_04_colour": "Stop 4: colour",
+          "stop_05_temperature": "Stop 5: temperature",
+          "stop_05_colour": "Stop 5: colour",
+          "stop_06_temperature": "Stop 6: temperature",
+          "stop_06_colour": "Stop 6: colour",
+          "stop_07_temperature": "Stop 7: temperature",
+          "stop_07_colour": "Stop 7: colour",
+          "stop_08_temperature": "Stop 8: temperature",
+          "stop_08_colour": "Stop 8: colour",
+          "stop_09_temperature": "Stop 9: temperature",
+          "stop_09_colour": "Stop 9: colour",
+          "stop_10_temperature": "Stop 10: temperature",
+          "stop_10_colour": "Stop 10: colour",
+          "stop_11_temperature": "Stop 11: temperature",
+          "stop_11_colour": "Stop 11: colour",
+          "stop_12_temperature": "Stop 12: temperature",
+          "stop_12_colour": "Stop 12: colour",
+          "stop_13_temperature": "Stop 13: temperature",
+          "stop_13_colour": "Stop 13: colour",
+          "stop_14_temperature": "Stop 14: temperature",
+          "stop_14_colour": "Stop 14: colour",
+          "stop_15_temperature": "Stop 15: temperature",
+          "stop_15_colour": "Stop 15: colour",
+          "stop_16_temperature": "Stop 16: temperature",
+          "stop_16_colour": "Stop 16: colour",
+          "stop_17_temperature": "Stop 17: temperature",
+          "stop_17_colour": "Stop 17: colour",
+          "stop_18_temperature": "Stop 18: temperature",
+          "stop_18_colour": "Stop 18: colour",
+          "stop_19_temperature": "Stop 19: temperature",
+          "stop_19_colour": "Stop 19: colour",
+          "stop_20_temperature": "Stop 20: temperature",
+          "stop_20_colour": "Stop 20: colour",
+          "reset_colours": "Reset colours to defaults"
+        },
+        "data_description": {
+          "reset_colours": "Ignore the rows above and restore the weather-service colour scale."
         }
       }
     },
     "error": {
-      "invalid_palette": "Could not read the diagram colours. Use one line per stop, like \"-40 #e3c6f5\", with temperatures rising and six-digit colours."
+      "colour_missing": "Pick a colour for this stop, or clear its temperature.",
+      "too_few_stops": "At least two stops are needed.",
+      "duplicate_temperature": "Two stops have the same temperature."
     }
   },
   "entity": {

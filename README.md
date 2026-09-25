@@ -138,7 +138,7 @@ Changing mode takes effect within a second; a running fan is stopped and the pau
 
 ## Settings
 
-All settings take effect within a second, without restarting the cycle. Change them either on the device page (the **Configuration** section, one number per setting, handy on a dashboard), or all together with **Configure** on the integration.
+All settings take effect within a second, without restarting the cycle. Change them either on the device page (the **Configuration** section, one number per setting, handy on a dashboard), or all together with **Configure**, then **Settings**.
 
 | Setting | Default | Range | What it does |
 | --- | --- | --- | --- |
@@ -190,11 +190,11 @@ Settings you already have keep their stored values when a new version changes a 
 
 ## Resetting to defaults
 
-Either:
-- press **Reset settings to defaults** on the device page, or
-- **Configure**, tick **Reset to defaults**, Submit.
+- **Reset settings to defaults** (button on the device page) resets all settings **and** the diagram colours.
+- **Configure**, **Settings**, tick **Reset settings to defaults**: resets the numeric settings only; the colours are kept.
+- **Configure**, **Diagram colours**, tick **Reset colours to defaults**: resets the colours only.
 
-Only the settings are reset. The chosen fans and probes, Breathing and Mode are kept.
+The chosen fans and probes, Breathing and Mode are always kept.
 
 ## Tuning guide
 
@@ -232,10 +232,10 @@ The **Diagram** image entity draws the recuperator as a pipe with pinched ends: 
 ### Diagram colours
 
 Both the temperature setpoints and their colours can be changed:
-- **Configure**, the **Diagram colours** box: one stop per line, a temperature in °C and a `#rrggbb` colour, for example `-40 #e3c6f5`.
-- Or the **Diagram colours** text entity on the device page: the same on one line, stops separated by `;`, for example `-10 #2f6fdc; 5 #3cc4c6; 20 #f1e344; 35 #d9401f`.
+- **Configure**, then **Diagram colours**: one row per stop, with a temperature box and a **colour picker**, pre-filled with the current scale. Change a colour by clicking its colour box. Clear a temperature to remove that stop, or fill in one of the empty rows to add one (up to 20 stops). The order does not matter: stops are sorted by temperature. Tick **Reset colours to defaults** to restore the weather-service scale.
+- Or, for quick edits from a dashboard, the **Diagram colours** text entity on the device page: the whole scale on one line, stops separated by `;`, for example `-10 #2f6fdc; 5 #3cc4c6; 20 #f1e344; 35 #d9401f`.
 
-Temperatures must rise from one stop to the next; colours in between are blended, and temperatures beyond the ends use the end colours. An invalid scale is refused, and the old one is kept. **Reset settings to defaults** restores the weather-service scale. The diagram redraws as soon as the colours change.
+Colours in between stops are blended, and temperatures beyond the ends use the end colours. An invalid scale (a stop without a colour, two stops at the same temperature, fewer than two stops) is refused, and the old one is kept. The diagram redraws as soon as the colours change.
 
 The default scale:
 

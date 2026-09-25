@@ -11,7 +11,7 @@ from homeassistant.const import CONF_NAME
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
-from .diagram import PALETTE, palette_to_text, parse_palette
+from .diagram import PALETTE, palette_to_text
 from .const import (
     CONF_EXHAUST_SWITCH,
     CONF_INSIDE_SENSOR,
@@ -101,24 +101,40 @@ class RecuperatorConfigFlow(ConfigFlow, domain=DOMAIN):
         return RecuperatorOptionsFlow()
 
 
+MAX_STOPS = 20  # colour rows on the Diagram colours screen
+CONF_RESET_COLOURS = "reset_colours"
+
+
+def _temp_key(i: int) -> str:
+    return f"stop_{i:02d}_temperature"
+
+
+def _colour_key(i: int) -> str:
+    return f"stop_{i:02d}_colour"
+
+
+def _to_rgb(hex_colour: str) -> list[int]:
+    return [int(hex_colour[k : k + 2], 16) for k in (1, 3, 5)]
+
+
+def _to_hex(rgb) -> str:
+    return "#%02x%02x%02x" % tuple(int(v) for v in rgb)
+
+
 class RecuperatorOptionsFlow(OptionsFlow):
-    """Configure: every tunable setting on one screen, plus reset to defaults."""
+    """Configure: a menu with the numeric settings and the diagram colours."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        errors: dict[str, str] = {}
+        return self.async_show_menu(step_id="init", menu_options=["settings", "colours"])
+
+    async def async_step_settings(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Every numeric setting on one screen; reset puts them back (colours are kept)."""
+        keep = {k: v for k, v in self.config_entry.options.items() if k == CONF_PALETTE}
         if user_input is not None:
             if user_input.pop(CONF_RESET, False):
-                return self.async_create_entry(data=dict(DEFAULTS))
-            data = {**DEFAULTS, **user_input}
-            try:
-                palette = parse_palette(data.pop(CONF_PALETTE, "") or palette_to_text())
-            except ValueError:
-                errors[CONF_PALETTE] = "invalid_palette"
-            else:
-                if palette != PALETTE:
-                    data[CONF_PALETTE] = palette_to_text(palette)
-                return self.async_create_entry(data=data)
-        current = {**DEFAULTS, **self.config_entry.options, **(user_input or {})}
+                return self.async_create_entry(data={**DEFAULTS, **keep})
+            return self.async_create_entry(data={**DEFAULTS, **user_input, **keep})
+        current = {**DEFAULTS, **self.config_entry.options}
         schema: dict = {}
         for s in SETTINGS:
             cfg = selector.NumberSelectorConfig(
@@ -127,8 +143,62 @@ class RecuperatorOptionsFlow(OptionsFlow):
             if s.unit:
                 cfg["unit_of_measurement"] = s.unit
             schema[vol.Required(s.key, default=current[s.key])] = selector.NumberSelector(cfg)
-        schema[vol.Optional(CONF_PALETTE, default=current.get(CONF_PALETTE) or palette_to_text())] = (
-            selector.TextSelector(selector.TextSelectorConfig(multiline=True))
-        )
         schema[vol.Optional(CONF_RESET, default=False)] = selector.BooleanSelector()
-        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema), errors=errors)
+        return self.async_show_form(step_id="settings", data_schema=vol.Schema(schema))
+
+    async def async_step_colours(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """The diagram's colour scale: a temperature box and a colour picker per stop.
+
+        Rows are pre-filled with the current scale, with empty rows after them for
+        new stops. Clearing a row's temperature removes that stop. Stops are sorted
+        by temperature, so their order on the screen does not matter.
+        """
+        errors: dict[str, str] = {}
+        options = dict(self.config_entry.options)
+        if user_input is not None:
+            if user_input.get(CONF_RESET_COLOURS):
+                options.pop(CONF_PALETTE, None)
+                return self.async_create_entry(data=options)
+            stops: list[tuple[float, str]] = []
+            for i in range(1, MAX_STOPS + 1):
+                t = user_input.get(_temp_key(i))
+                if t is None or t == "":
+                    continue
+                rgb = user_input.get(_colour_key(i))
+                if not rgb:
+                    errors[_colour_key(i)] = "colour_missing"
+                    continue
+                stops.append((float(t), _to_hex(rgb)))
+            stops.sort()
+            if not errors:
+                if len(stops) < 2:
+                    errors["base"] = "too_few_stops"
+                elif any(a[0] == b[0] for a, b in zip(stops, stops[1:])):
+                    errors["base"] = "duplicate_temperature"
+            if not errors:
+                palette = tuple(stops)
+                if palette == PALETTE:
+                    options.pop(CONF_PALETTE, None)
+                else:
+                    options[CONF_PALETTE] = palette_to_text(palette)
+                return self.async_create_entry(data=options)
+        current = self.config_entry.runtime_data.palette if user_input is None else None
+        schema: dict = {}
+        for i in range(1, MAX_STOPS + 1):
+            if current is not None and i <= len(current):
+                t, c = current[i - 1]
+                t_key = vol.Optional(_temp_key(i), description={"suggested_value": t})
+                c_key = vol.Optional(_colour_key(i), description={"suggested_value": _to_rgb(c)})
+            elif user_input is not None:
+                t_key = vol.Optional(_temp_key(i), description={"suggested_value": user_input.get(_temp_key(i))})
+                c_key = vol.Optional(_colour_key(i), description={"suggested_value": user_input.get(_colour_key(i))})
+            else:
+                t_key, c_key = vol.Optional(_temp_key(i)), vol.Optional(_colour_key(i))
+            schema[t_key] = selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=-80, max=80, step=0.5, mode=selector.NumberSelectorMode.BOX, unit_of_measurement="°C"
+                )
+            )
+            schema[c_key] = selector.ColorRGBSelector()
+        schema[vol.Optional(CONF_RESET_COLOURS, default=False)] = selector.BooleanSelector()
+        return self.async_show_form(step_id="colours", data_schema=vol.Schema(schema), errors=errors)
