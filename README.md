@@ -83,9 +83,10 @@ In each phase, one probe reads the air being blown through (the **reference**) a
 
 A running phase ends at the first of:
 
-1. **Recovered**: the far probe has closed *Recovery target* per cent of the gap between where it started and the air temperature. The air temperature is the reference probe, or the last measured indoor/outdoor temperature while the reference probe is still catching up after the switch (probes need 10–30 s to register a change).
-2. **Settled**: both probes have moved less than *Settle change* during the last *Settle window*. The core has done all it is going to.
-3. **Maximum phase**: a hard time limit.
+1. **Supply too cold** (intake only): the air entering the room is below *Minimum supply temperature*.
+2. **Recovered**: the far probe has closed *Recovery target* per cent of the gap between where it started and the air temperature. The air temperature is the reference probe, or the last measured indoor/outdoor temperature while the reference probe is still catching up after the switch (probes need 10–30 s to register a change).
+3. **Settled**: the far probe has got at least halfway to the recovery target, and both probes have since moved less than *Settle change* during the last *Settle window*. A far probe that has not moved yet does **not** count as settled: it means the core is still doing its job.
+4. **Maximum phase**: a hard time limit.
 
 ...but never before **Minimum phase**. Then both fans are off for **Pause**, and the other phase starts.
 
@@ -110,7 +111,7 @@ For a recuperator named *Basement Breather*:
 | `switch.basement_breather_breathing` | **Breathing** on/off. Off: both fans are switched off once, then left alone (you can run them by hand). |
 | `select.basement_breather_mode` | **Mode**: Automatic, Timed, Exhaust only, Intake only |
 | `sensor.basement_breather_phase` | Exhaust, Pause, Intake or Stopped. Attributes: when the phase started, the next phase, whether (and why) it is timed, cold weather, mode |
-| `sensor.basement_breather_last_change_reason` | Why the last phase ended: Recovered, Settled, Maximum time, Cold limit, Timed, Started, Stopped |
+| `sensor.basement_breather_last_change_reason` | Why the last phase ended: Recovered, Settled, Maximum time, Cold limit, Timed, Supply too cold, Started, Stopped |
 | `sensor.basement_breather_last_exhaust` / `..._last_intake` | Length of the last exhaust / intake phase (s) |
 | `sensor.basement_breather_basement_temperature` | Indoor air temperature: the inside probe at the end of the last exhaust |
 | `sensor.basement_breather_outdoor_temperature` | Outdoor air temperature: the outside probe at the end of the last intake |
@@ -138,7 +139,7 @@ All settings take effect within a second, without restarting the cycle. Change t
 
 | Setting | Default | Range | What it does |
 | --- | --- | --- | --- |
-| Recovery target | 80 % | 30–100 | End a phase when the far probe has closed this much of the gap. Higher: longer phases, more heat kept, fewer switches. Lower: shorter phases, more air changes. |
+| Recovery target | 80 % | 5–100 | End a phase when the far probe has closed this much of the gap. See [Choosing the recovery target](#choosing-the-recovery-target). |
 | Settle window | 15 s | 5–120 | Time over which "settled" is judged |
 | Settle change | 0.2 °C | 0.05–2 | Both probes moving less than this over the settle window counts as settled |
 | Minimum phase | 20 s | 5–300 | No phase ends sooner (protects the fans and relays from rapid switching) |
@@ -149,6 +150,17 @@ All settings take effect within a second, without restarting the cycle. Change t
 | Cold threshold | −5 °C | −40–15 | Outdoor temperature at or below which the cold-weather limits apply |
 | Cold intake limit | 45 s | 10–300 | In cold weather, intake never runs longer than this |
 | Cold exhaust extra | 7 s | 0–60 | In cold weather, exhaust runs at least as long as the last intake and at most this much longer |
+| Minimum supply temperature | 5 °C | −30–25 | During intake the inside probe reads the air entering the room. If it drops below this, the intake ends (after *Minimum phase*, or the *Cold intake limit* if that is shorter). Applies in every mode. Raise it (e.g. 12 °C) to avoid cold draughts. |
+
+## Choosing the recovery target
+
+The probes sit in the airstream at the two faces of the core. During intake, the inside probe reads the air leaving the core into the room. With a good core it stays close to room temperature for a long time, because the core warms the incoming air, and only starts to drop when the core has given up most of its stored heat (the "breakthrough"). Exhaust works the same way in reverse at the outdoor face.
+
+- **Low target (10–25 %)**: switch as soon as the far end *starts* to change. The core never runs out, so incoming air arrives warm. **Best heat recovery.** This is how commercial single-tube units work; they reverse about every minute.
+- **High target (70–90 %)**: let the core fill up or empty completely. Longer phases move more air per phase (**more ventilation** through a long hose), but the last part of each phase recovers little heat.
+- With a large core or slow fans, even a low target can take minutes to reach. *Maximum phase* then sets the rhythm; that is fine.
+
+If ventilation matters more than heat recovery, use a higher target or longer *Minimum phase*, and rely on *Minimum supply temperature* and the cold-weather limits to protect the room in winter.
 
 ## Resetting to defaults
 
@@ -165,7 +177,8 @@ Only the settings are reset. The chosen fans and probes, Breathing and Mode are 
 | Phases end very quickly, lots of switching | Raise *Minimum phase*, or raise *Recovery target* |
 | Phases always hit *Maximum time* (Last change reason) | The core never gets to the target: lower *Recovery target* (e.g. 70 %), or raise *Maximum phase* if you want it to keep going |
 | Phases often end as *Settled* at low heat recovery | The probes are slow or the fans weak: raise *Settle window* (e.g. 25 s) |
-| Cold draughts in winter | Lower *Cold intake limit* (e.g. 30 s), or raise *Cold threshold* so the limits start earlier |
+| Cold draughts in winter | Raise *Minimum supply temperature* (e.g. 12 °C); lower *Cold intake limit* (e.g. 30 s), or raise *Cold threshold* so the limits start earlier |
+| Phases always run to *Maximum phase* | Normal with a big core and slow fans: the far end never reaches the target. Lower *Recovery target*, or treat *Maximum phase* as your cycle length |
 | Frost or ice at the outdoor end of the core | Raise *Cold exhaust extra*, so warm air runs longer after each intake |
 | Room not drying out | Lower *Recovery target* (more air changes per hour), or run *Exhaust only* for a while |
 | Always timed when the weather is mild | Expected. Lower *Similar temperatures* if you want the probes to decide even for small differences |

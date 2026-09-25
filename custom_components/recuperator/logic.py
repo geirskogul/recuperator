@@ -35,6 +35,7 @@ from .const import (
     REASON_SETTLED,
     REASON_STARTED,
     REASON_STOPPED,
+    REASON_SUPPLY_COLD,
     REASON_TIMED,
     TIMED_BY_MODE,
     TIMED_NOT,
@@ -63,6 +64,7 @@ class Settings:
     cold_threshold: float = DEFAULTS["cold_threshold"]
     cold_intake_max_seconds: float = DEFAULTS["cold_intake_max_seconds"]
     cold_exhaust_extra_seconds: float = DEFAULTS["cold_exhaust_extra_seconds"]
+    min_supply_temperature: float = DEFAULTS["min_supply_temperature"]
 
     @classmethod
     def from_mapping(cls, values: dict) -> Settings:
@@ -265,6 +267,17 @@ class BreathingLogic:
         ref, far = self._ref_far(self.phase, inside, outside)
         self.cold = self._is_cold(s, outside)
 
+        # Room protection: during intake the inside probe reads the air entering the
+        # room. If it gets colder than allowed, end the intake now (after the
+        # minimum phase), whatever else is going on. Applies in every mode.
+        if (
+            self.phase == PHASE_INTAKE
+            and inside is not None
+            and inside < s.min_supply_temperature
+            and elapsed >= min(s.min_phase_seconds, s.cold_intake_max_seconds)
+        ):
+            return REASON_SUPPLY_COLD
+
         # A probe that drops out mid-phase turns the rest of the phase into a timed one.
         if self.timed_reason == TIMED_NOT and (ref is None or far is None):
             self.timed_reason = TIMED_SENSOR
@@ -292,11 +305,19 @@ class BreathingLogic:
             return cap_reason
         if elapsed < lower:
             return None
-        if self._recovered(ref, far) * 100 >= s.recovery_percent:
+        recovered = self._recovered(ref, far) * 100
+        if recovered >= s.recovery_percent:
             return REASON_RECOVERED
-        # Settled: nothing is changing any more at either end of the core. Both
+        # Settled: the far probe has made real progress and then stopped. A far
+        # probe that has not moved yet means the core is still doing its job
+        # (the air leaving it is still close to the far side's temperature), so
+        # "settled" only counts after at least half the recovery target. Both
         # probes must be steady, so a reference probe still catching up with the
-        # new airflow cannot make the phase look finished.
-        if self._settled(INSIDE, now, s) and self._settled(OUTSIDE, now, s):
+        # new airflow cannot make the phase look finished either.
+        if (
+            recovered >= s.recovery_percent / 2
+            and self._settled(INSIDE, now, s)
+            and self._settled(OUTSIDE, now, s)
+        ):
             return REASON_SETTLED
         return None

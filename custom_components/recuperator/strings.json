@@ -55,10 +55,11 @@
           "cold_threshold": "Cold threshold",
           "cold_intake_max_seconds": "Cold intake limit",
           "cold_exhaust_extra_seconds": "Cold exhaust extra",
-          "reset_to_defaults": "Reset to defaults"
+          "reset_to_defaults": "Reset to defaults",
+          "min_supply_temperature": "Minimum supply temperature"
         },
         "data_description": {
-          "recovery_percent": "End a phase once the far probe has closed this much of the gap to the near probe. Higher: longer phases, more heat kept, fewer switches.",
+          "recovery_percent": "End a phase once the far probe has closed this much of the gap. Low (10-25%): switch as soon as the far end of the core starts to change, best heat recovery, shorter phases. High (80%+): let the core fill up, longer phases, more heat lost at the end of each phase.",
           "settle_seconds": "The far probe counts as settled if it moved less than the settle change over this many seconds.",
           "settle_delta": "How little the far probe may move during the settle window to count as settled (ended early because the core has done all it will).",
           "min_phase_seconds": "No exhaust or intake phase ends before this, whatever the probes say.",
@@ -69,7 +70,8 @@
           "cold_threshold": "At or below this outdoor temperature, the cold-weather limits apply.",
           "cold_intake_max_seconds": "In cold weather, intake never runs longer than this.",
           "cold_exhaust_extra_seconds": "In cold weather, exhaust runs at least as long as the last intake and at most this much longer.",
-          "reset_to_defaults": "Ignore the values above and restore every setting to its default."
+          "reset_to_defaults": "Ignore the values above and restore every setting to its default.",
+          "min_supply_temperature": "During intake the inside probe reads the air entering the room. If it drops below this, the intake ends early (after the minimum phase, or the cold intake limit if shorter). Protects the room from cold draughts in any weather."
         }
       }
     }
@@ -134,6 +136,9 @@
       },
       "cold_exhaust_extra_seconds": {
         "name": "Cold exhaust extra"
+      },
+      "min_supply_temperature": {
+        "name": "Minimum supply temperature"
       }
     },
     "sensor": {
@@ -155,7 +160,8 @@
           "cold_limit": "Cold limit",
           "timed": "Timed",
           "started": "Started",
-          "stopped": "Stopped"
+          "stopped": "Stopped",
+          "supply_cold": "Supply too cold"
         }
       },
       "last_exhaust": {
