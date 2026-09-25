@@ -56,7 +56,8 @@
           "cold_intake_max_seconds": "Cold intake limit",
           "cold_exhaust_extra_seconds": "Cold exhaust extra",
           "reset_to_defaults": "Reset to defaults",
-          "min_supply_temperature": "Minimum supply temperature"
+          "min_supply_temperature": "Minimum supply temperature",
+          "max_supply_drop": "Maximum supply drop"
         },
         "data_description": {
           "recovery_percent": "End a phase once the far probe has closed this much of the gap. Low (10-25%): switch as soon as the far end of the core starts to change, best heat recovery, shorter phases. High (80%+): let the core fill up, longer phases, more heat lost at the end of each phase.",
@@ -68,10 +69,11 @@
           "timed_phase_seconds": "Length of each phase in Timed mode, and whenever the probes cannot be used (inside and outside too similar, or a probe unavailable).",
           "similar_band": "If the two probes differ by less than this when a phase starts, that phase is timed instead (nothing to recover, e.g. mild weather or hose disconnected).",
           "cold_threshold": "At or below this outdoor temperature, the cold-weather limits apply.",
-          "cold_intake_max_seconds": "In cold weather, intake never runs longer than this.",
+          "cold_intake_max_seconds": "In cold weather, intake never runs longer than this. Allow enough time for fresh air to get through the ducting (several minutes with long hoses or slow fans); Maximum supply drop protects the room.",
           "cold_exhaust_extra_seconds": "In cold weather, exhaust runs at least as long as the last intake and at most this much longer.",
           "reset_to_defaults": "Ignore the values above and restore every setting to its default.",
-          "min_supply_temperature": "During intake the inside probe reads the air entering the room. If it drops below this, the intake ends early (after the minimum phase, or the cold intake limit if shorter). Protects the room from cold draughts in any weather."
+          "min_supply_temperature": "Optional hard floor: the intake also ends if the air entering the room drops below this temperature. -30 (the default) means off. Only set it if there is a temperature the room must never see, e.g. near water pipes.",
+          "max_supply_drop": "During intake the inside probe reads the air entering the room. Once the minimum phase has passed, the intake ends if that air is more than this much colder than the room (the basement temperature from the last exhaust). Works in any season: it follows the room, so a cold room still breathes."
         }
       }
     }
@@ -101,6 +103,9 @@
     "binary_sensor": {
       "cold_weather": {
         "name": "Cold weather"
+      },
+      "frost_risk": {
+        "name": "Frost risk"
       }
     },
     "number": {
@@ -139,6 +144,9 @@
       },
       "min_supply_temperature": {
         "name": "Minimum supply temperature"
+      },
+      "max_supply_drop": {
+        "name": "Maximum supply drop"
       }
     },
     "sensor": {
@@ -161,7 +169,8 @@
           "timed": "Timed",
           "started": "Started",
           "stopped": "Stopped",
-          "supply_cold": "Supply too cold"
+          "supply_cold": "Supply below floor",
+          "supply_drop": "Supply colder than room"
         }
       },
       "last_exhaust": {

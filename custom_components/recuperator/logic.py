@@ -22,6 +22,7 @@ from dataclasses import dataclass
 
 from .const import (
     DEFAULTS,
+    FROST_FACE_TEMPERATURE,
     MODE_EXHAUST_ONLY,
     MODE_INTAKE_ONLY,
     MODE_TIMED,
@@ -36,6 +37,7 @@ from .const import (
     REASON_STARTED,
     REASON_STOPPED,
     REASON_SUPPLY_COLD,
+    REASON_SUPPLY_DROP,
     REASON_TIMED,
     TIMED_BY_MODE,
     TIMED_NOT,
@@ -64,6 +66,7 @@ class Settings:
     cold_threshold: float = DEFAULTS["cold_threshold"]
     cold_intake_max_seconds: float = DEFAULTS["cold_intake_max_seconds"]
     cold_exhaust_extra_seconds: float = DEFAULTS["cold_exhaust_extra_seconds"]
+    max_supply_drop: float = DEFAULTS["max_supply_drop"]
     min_supply_temperature: float = DEFAULTS["min_supply_temperature"]
 
     @classmethod
@@ -88,6 +91,9 @@ class BreathingLogic:
         self.basement_estimate: float | None = None
         self.last_recovery_percent: float | None = None
         self.cold: bool = False
+        self.frost_risk: bool = False
+        self._intake_inside_start: float | None = None
+        self._exhaust_max_outside: float | None = None
         self._far_start: float | None = None
         self._history: dict[str, deque[tuple[float, float | None]]] = {
             INSIDE: deque(),
@@ -156,6 +162,10 @@ class BreathingLogic:
         else:
             self.timed_reason = TIMED_NOT
         self._far_start = far
+        if phase == PHASE_INTAKE:
+            self._intake_inside_start = inside
+        if phase == PHASE_EXHAUST:
+            self._exhaust_max_outside = outside
 
     def _air_difference(self, inside: float, outside: float) -> float:
         """How different basement air and outdoor air are.
@@ -221,6 +231,13 @@ class BreathingLogic:
                 self.last_exhaust_seconds = duration
                 if inside is not None:
                     self.basement_estimate = inside
+                # Frost risk: in cold weather, if even the warm exhaust never got the
+                # core's outdoor face above freezing, condensation there can ice up.
+                self.frost_risk = bool(
+                    self.cold
+                    and self._exhaust_max_outside is not None
+                    and self._exhaust_max_outside <= FROST_FACE_TEMPERATURE
+                )
             else:
                 self.last_intake_seconds = duration
                 if outside is not None:
@@ -267,16 +284,20 @@ class BreathingLogic:
         ref, far = self._ref_far(self.phase, inside, outside)
         self.cold = self._is_cold(s, outside)
 
+        if self.phase == PHASE_EXHAUST and outside is not None:
+            if self._exhaust_max_outside is None or outside > self._exhaust_max_outside:
+                self._exhaust_max_outside = outside
+
         # Room protection: during intake the inside probe reads the air entering the
-        # room. If it gets colder than allowed, end the intake now (after the
-        # minimum phase), whatever else is going on. Applies in every mode.
-        if (
-            self.phase == PHASE_INTAKE
-            and inside is not None
-            and inside < s.min_supply_temperature
-            and elapsed >= min(s.min_phase_seconds, s.cold_intake_max_seconds)
-        ):
-            return REASON_SUPPLY_COLD
+        # room. After the minimum phase (so fresh air has had time to arrive), end
+        # the intake if that air has fallen more than max_supply_drop below room
+        # temperature, or below the optional hard floor. Applies in every mode.
+        if self.phase == PHASE_INTAKE and inside is not None and elapsed >= s.min_phase_seconds:
+            room = self.basement_estimate if self.basement_estimate is not None else self._intake_inside_start
+            if room is not None and inside < room - s.max_supply_drop:
+                return REASON_SUPPLY_DROP
+            if inside < s.min_supply_temperature:
+                return REASON_SUPPLY_COLD
 
         # A probe that drops out mid-phase turns the rest of the phase into a timed one.
         if self.timed_reason == TIMED_NOT and (ref is None or far is None):

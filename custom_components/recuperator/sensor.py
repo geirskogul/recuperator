@@ -5,7 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 
-from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
+from homeassistant.components.sensor import (
+    RestoreSensor,
+    SensorDeviceClass,
+    SensorEntity,
+    SensorStateClass,
+)
 from homeassistant.const import PERCENTAGE, UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -37,8 +42,14 @@ READOUTS = (
 )
 
 
+RESTORED = {"basement_temperature": "basement_estimate", "outdoor_temperature": "outdoor_estimate"}
+
+
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
-    async_add_entities(ReadoutSensor(entry.runtime_data, entry, r) for r in READOUTS)
+    async_add_entities(
+        (LearnedTemperatureSensor if r.key in RESTORED else ReadoutSensor)(entry.runtime_data, entry, r)
+        for r in READOUTS
+    )
 
 
 class ReadoutSensor(RecuperatorEntity, SensorEntity):
@@ -63,3 +74,24 @@ class ReadoutSensor(RecuperatorEntity, SensorEntity):
         if self._readout.key == "phase":
             return self._controller.phase_attributes()
         return None
+
+
+class LearnedTemperatureSensor(ReadoutSensor, RestoreSensor):
+    """Basement / outdoor air temperature, remembered across restarts.
+
+    The cycle uses them to judge whether indoor and outdoor air are similar and
+    how big the gap is, so restoring them lets the first phases after a restart
+    be temperature-driven straight away.
+    """
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        attr = RESTORED[self._readout.key]
+        if getattr(self._controller.logic, attr) is not None:
+            return
+        last = await self.async_get_last_sensor_data()
+        if last is not None and last.native_value is not None:
+            try:
+                setattr(self._controller.logic, attr, float(last.native_value))
+            except (TypeError, ValueError):
+                pass

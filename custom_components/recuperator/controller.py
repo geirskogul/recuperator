@@ -32,6 +32,7 @@ from .const import (
     PHASE_EXHAUST,
     PHASE_INTAKE,
     SETTINGS_BY_KEY,
+    STARTUP_WAIT_SECONDS,
 )
 from .logic import INSIDE, OUTSIDE, BreathingLogic, Settings
 
@@ -59,6 +60,7 @@ class RecuperatorController:
         self._unsubs: list[CALLBACK_TYPE] = []
         self._last_command: dict[str, tuple[str, float]] = {}
         self._hands_off = True  # when disabled, leave the fans alone after turning them off
+        self._start_deadline: float | None = None  # waiting for the probes before the first phase
 
     # -- settings ---------------------------------------------------------------
 
@@ -139,14 +141,30 @@ class RecuperatorController:
         now = self._now()
         if enabled:
             self._hands_off = False
-            self.logic.start(now, self.mode, self.settings, *self._probes())
-            _LOGGER.info("%s: breathing started (%s)", self.entry.title, self.mode)
+            # Right after a restart the probes (e.g. ESPHome) take a few seconds to
+            # connect. Wait up to STARTUP_WAIT_SECONDS for both before the first
+            # phase, so it can be temperature-driven instead of timed.
+            self._start_deadline = now + STARTUP_WAIT_SECONDS
+            self._maybe_start(now)
         else:
+            self._start_deadline = None
             self.logic.stop()
             _LOGGER.info("%s: breathing stopped", self.entry.title)
             await self._async_both_off()
             self._hands_off = True
         await self._async_apply()
+        self._notify()
+
+    def _maybe_start(self, now: float) -> None:
+        """Start the cycle once both probes read, or when the wait runs out."""
+        if self._start_deadline is None:
+            return
+        inside, outside = self._probes()
+        if (inside is None or outside is None) and now < self._start_deadline:
+            return
+        self._start_deadline = None
+        self.logic.start(now, self.mode, self.settings, inside, outside)
+        _LOGGER.info("%s: breathing started (%s)", self.entry.title, self.mode)
         self._notify()
 
     async def async_set_mode(self, mode: str) -> None:
@@ -187,6 +205,7 @@ class RecuperatorController:
     async def _async_run(self, now: float) -> None:
         if not self.enabled:
             return
+        self._maybe_start(now)
         changed = self.logic.step(now, self.mode, self.settings, *self._probes())
         await self._async_apply()
         if changed:

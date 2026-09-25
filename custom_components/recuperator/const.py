@@ -49,7 +49,8 @@ REASON_SETTLED = "settled"  # the far probe stopped changing
 REASON_MAX_TIME = "max_time"  # the phase hit its maximum length
 REASON_COLD_LIMIT = "cold_limit"  # a cold-weather limit ended the phase
 REASON_TIMED = "timed"  # timed breathing: the fixed phase length ran out
-REASON_SUPPLY_COLD = "supply_cold"  # air entering the room got colder than allowed
+REASON_SUPPLY_DROP = "supply_drop"  # air entering the room fell too far below room temperature
+REASON_SUPPLY_COLD = "supply_cold"  # air entering the room got colder than the hard floor
 REASON_STARTED = "started"  # breathing was switched on
 REASON_STOPPED = "stopped"  # breathing was switched off
 REASONS = [
@@ -58,10 +59,14 @@ REASONS = [
     REASON_MAX_TIME,
     REASON_COLD_LIMIT,
     REASON_TIMED,
+    REASON_SUPPLY_DROP,
     REASON_SUPPLY_COLD,
     REASON_STARTED,
     REASON_STOPPED,
 ]
+
+STARTUP_WAIT_SECONDS = 60  # wait this long for the probes after switching on / a restart
+FROST_FACE_TEMPERATURE = 0.5  # outdoor face never above this during a cold exhaust = frost risk
 
 # -- why a phase is timed instead of temperature-driven ------------------------
 
@@ -97,9 +102,10 @@ SETTINGS: tuple[Setting, ...] = (
     Setting("timed_phase_seconds", 60, 10, 900, 1, "s", "mdi:timer-cog-outline"),
     Setting("similar_band", 2.0, 0, 20, 0.1, "°C", "mdi:approximately-equal"),
     Setting("cold_threshold", -5, -40, 15, 0.5, "°C", "mdi:snowflake-thermometer"),
-    Setting("cold_intake_max_seconds", 45, 10, 300, 1, "s", "mdi:snowflake-alert"),
+    Setting("cold_intake_max_seconds", 300, 10, 900, 1, "s", "mdi:snowflake-alert"),
     Setting("cold_exhaust_extra_seconds", 7, 0, 60, 1, "s", "mdi:snowflake-melt"),
-    Setting("min_supply_temperature", 5, -30, 25, 0.5, "°C", "mdi:home-thermometer-outline"),
+    Setting("max_supply_drop", 3.0, 0.5, 20, 0.5, "°C", "mdi:thermometer-chevron-down"),
+    Setting("min_supply_temperature", -30, -30, 25, 0.5, "°C", "mdi:home-thermometer-outline"),
 )
 
 SETTINGS_BY_KEY: dict[str, Setting] = {s.key: s for s in SETTINGS}
