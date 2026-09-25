@@ -11,13 +11,17 @@ from homeassistant.helpers.event import async_call_later, async_track_state_chan
 from homeassistant.util import dt as dt_util
 
 from .diagram import render_svg
+from .replay import PLACEHOLDER
 from .entity import RecuperatorEntity
 
 MIN_REDRAW = timedelta(seconds=10)  # probe changes redraw at most this often
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
-    async_add_entities([RecuperatorDiagram(hass, entry.runtime_data, entry)])
+    async_add_entities([
+        RecuperatorDiagram(hass, entry.runtime_data, entry),
+        RecuperatorReplay(hass, entry.runtime_data, entry),
+    ])
 
 
 class RecuperatorDiagram(RecuperatorEntity, ImageEntity):
@@ -69,3 +73,31 @@ class RecuperatorDiagram(RecuperatorEntity, ImageEntity):
         c = self._controller
         inside, outside = c._probes()
         return render_svg(outside, inside, c.logic.phase, self._entry.title, c.palette).encode()
+
+
+class RecuperatorReplay(RecuperatorEntity, ImageEntity):
+    """The last animated replay made with the Create replay action."""
+
+    _attr_content_type = "image/svg+xml"
+    _attr_icon = "mdi:play-box-outline"
+
+    def __init__(self, hass: HomeAssistant, controller, entry) -> None:
+        RecuperatorEntity.__init__(self, controller, entry, "replay")
+        ImageEntity.__init__(self, hass)
+        self._attr_image_last_updated = controller.replay_time or dt_util.utcnow()
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(self._controller.async_add_replay_listener(self._new_replay))
+
+    @callback
+    def _handle_update(self) -> None:
+        """Phase changes do not change a replay."""
+
+    @callback
+    def _new_replay(self) -> None:
+        self._attr_image_last_updated = self._controller.replay_time
+        self.async_write_ha_state()
+
+    async def async_image(self) -> bytes | None:
+        return self._controller.replay_svg or PLACEHOLDER.encode()

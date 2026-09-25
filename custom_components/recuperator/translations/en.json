@@ -255,11 +255,42 @@
     "image": {
       "diagram": {
         "name": "Diagram"
+      },
+      "replay": {
+        "name": "Diagram replay"
       }
     },
     "text": {
       "diagram_palette": {
         "name": "Diagram colours"
+      }
+    }
+  },
+  "services": {
+    "create_replay": {
+      "name": "Create replay",
+      "description": "Builds an animated diagram from recorded history, so you can watch the recuperator breathe. The result appears in the Diagram replay image and is saved under /local/recuperator/.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Recuperator",
+          "description": "Which recuperator (optional if there is only one)."
+        },
+        "hours": {
+          "name": "Hours",
+          "description": "How much history to replay, ending at End (or now)."
+        },
+        "end": {
+          "name": "End",
+          "description": "When the replay ends (optional, default now)."
+        },
+        "playback_seconds": {
+          "name": "Playback length",
+          "description": "How long one loop of the animation lasts."
+        },
+        "frames": {
+          "name": "Frames",
+          "description": "Number of frames (0 = one per minute of history, at least 60, at most 1440)."
+        }
       }
     }
   }

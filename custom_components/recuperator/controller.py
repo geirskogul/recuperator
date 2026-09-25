@@ -63,6 +63,9 @@ class RecuperatorController:
         self._last_command: dict[str, tuple[str, float]] = {}
         self._hands_off = True  # when disabled, leave the fans alone after turning them off
         self._start_deadline: float | None = None  # waiting for the probes before the first phase
+        self.replay_svg: bytes | None = None  # the last replay made by the Create replay action
+        self.replay_time = None
+        self._replay_listeners: list[Callable[[], None]] = []
 
     # -- settings ---------------------------------------------------------------
 
@@ -124,6 +127,20 @@ class RecuperatorController:
             self._listeners.remove(update)
 
         return remove
+
+    @callback
+    def async_add_replay_listener(self, update: Callable[[], None]) -> Callable[[], None]:
+        """Call `update` when a new replay has been made."""
+        self._replay_listeners.append(update)
+        return lambda: self._replay_listeners.remove(update)
+
+    @callback
+    def set_replay(self, svg: bytes) -> None:
+        """Store a new replay and tell the Diagram replay image."""
+        self.replay_svg = svg
+        self.replay_time = dt_util.utcnow()
+        for update in list(self._replay_listeners):
+            update()
 
     @callback
     def _notify(self) -> None:

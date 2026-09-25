@@ -10,11 +10,22 @@ from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers.typing import ConfigType
 
-from .const import PLATFORMS
+from .const import DOMAIN, PLATFORMS
 from .controller import RecuperatorController
+from .services import async_setup_services
 
 type RecuperatorConfigEntry = ConfigEntry[RecuperatorController]
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Register the Create replay action."""
+    async_setup_services(hass)
+    return True
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: RecuperatorConfigEntry) -> bool:

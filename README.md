@@ -117,6 +117,7 @@ For a recuperator named *Basement Breather*:
 | `sensor.basement_breather_outdoor_temperature` | Outdoor air temperature: the outside probe at the end of the last intake |
 | `sensor.basement_breather_heat_recovery` | How much of the gap the core closed in the last temperature-driven phase (%) |
 | `image.basement_breather_diagram` | A live picture of the pipe, filled with the temperature gradient (see [Diagram](#diagram)) |
+| `image.basement_breather_diagram_replay` | The last animated replay made with **Create replay** (see [Replay](#replay-watch-it-breathe)) |
 | `text.basement_breather_diagram_colours` | The diagram's colour scale, editable (see [Diagram colours](#diagram-colours)) |
 | `binary_sensor.basement_breather_cold_weather` | On while the cold-weather limits apply |
 | `binary_sensor.basement_breather_frost_risk` | On if, in cold weather, the last exhaust never warmed the core's outdoor face above freezing (condensation there can ice up) |
@@ -250,6 +251,49 @@ type: picture-entity
 entity: image.basement_breather_diagram
 show_name: false
 show_state: false
+```
+
+## Replay: watch it breathe
+
+The action **Recuperator: Create replay** turns recorded history into an **animated diagram**. The gradient shifts through each breath, the Exhaust/Intake label and arrow switch with each phase, and a marker moves along a timeline showing the time of day. It loops, and needs nothing but a browser.
+
+Run it from Developer tools, Actions, or from an automation or script:
+
+```yaml
+action: recuperator.create_replay
+data:
+  hours: 24              # how much history (0.25 to 168)
+  playback_seconds: 60   # length of one loop
+  # end: "2026-09-25 08:00:00"   # optional, default now
+  # frames: 0            # 0 = one per minute of history (60 to 1440)
+```
+
+The result:
+- appears in the **Diagram replay** image entity. Show it with a Picture Entity card, like the live diagram:
+  ```yaml
+  type: picture-entity
+  entity: image.basement_breather_diagram_replay
+  show_name: false
+  show_state: false
+  ```
+- is saved as `/config/www/recuperator/<name>-replay.svg`, reachable at `http://<home-assistant>:8123/local/recuperator/<name>-replay.svg`. Open it in any browser, or share the file. Home Assistant only serves `/local/` if the `www` folder existed when it started, so if the link does not work the first time, restart Home Assistant once.
+- The action also returns the file's address, the period and the number of frames (Developer tools shows this as the response).
+
+It uses the recorder's history of the two probes and the Phase sensor, so it can only go back as far as the recorder keeps history (10 days by default). Each run replaces the previous replay.
+
+A fresh replay of the last day, every morning:
+
+```yaml
+automation:
+  - alias: Recuperator daily replay
+    triggers:
+      - trigger: time
+        at: "06:00:00"
+    actions:
+      - action: recuperator.create_replay
+        data:
+          hours: 24
+          playback_seconds: 60
 ```
 
 ## Dashboard card

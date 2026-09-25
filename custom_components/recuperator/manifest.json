@@ -4,10 +4,11 @@
   "codeowners": ["@geirskogul"],
   "config_flow": true,
   "dependencies": ["image"],
+  "after_dependencies": ["recorder"],
   "documentation": "https://github.com/geirskogul/recuperator",
   "integration_type": "device",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/geirskogul/recuperator/issues",
   "requirements": [],
-  "version": "0.1.7"
+  "version": "0.1.8"
 }
