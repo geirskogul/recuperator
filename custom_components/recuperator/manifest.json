@@ -1,14 +1,20 @@
 {
   "domain": "recuperator",
   "name": "Recuperator",
-  "codeowners": ["@geirskogul"],
+  "after_dependencies": [
+    "recorder"
+  ],
+  "codeowners": [
+    "@geirskogul"
+  ],
   "config_flow": true,
-  "dependencies": ["image"],
-  "after_dependencies": ["recorder"],
+  "dependencies": [
+    "image"
+  ],
   "documentation": "https://github.com/geirskogul/recuperator",
   "integration_type": "device",
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/geirskogul/recuperator/issues",
   "requirements": [],
-  "version": "0.1.8"
+  "version": "0.1.9"
 }
