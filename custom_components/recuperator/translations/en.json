@@ -45,7 +45,8 @@
         "description": "What would you like to change?",
         "menu_options": {
           "settings": "Settings",
-          "colours": "Diagram colours"
+          "colours": "Diagram colours",
+          "replay": "Replay"
         }
       },
       "settings": {
@@ -68,10 +69,7 @@
           "max_supply_drop": "Maximum supply drop",
           "passive_intake": "Passive intake (intake fan off)",
           "passive_intake_max_seconds": "Passive intake maximum",
-          "passive_flow_delta": "Passive inflow change",
-          "replay_hours": "Replay hours",
-          "replay_playback_seconds": "Replay playback length",
-          "replay_frames": "Replay frames"
+          "passive_flow_delta": "Passive inflow change"
         },
         "data_description": {
           "recovery_percent": "End a phase once the far probe has closed this much of the gap. Low (10-25%): switch as soon as the far end of the core starts to change, best heat recovery, shorter phases. High (80%+): let the core fill up, longer phases, more heat lost at the end of each phase.",
@@ -85,15 +83,12 @@
           "cold_threshold": "At or below this outdoor temperature, the cold-weather limits apply.",
           "cold_intake_max_seconds": "In cold weather, intake never runs longer than this. Allow enough time for fresh air to get through the ducting (several minutes with long hoses or slow fans); Maximum supply drop protects the room.",
           "cold_exhaust_extra_seconds": "In cold weather, exhaust runs at least as long as the last intake and at most this much longer.",
-          "reset_to_defaults": "Ignore the values above and restore every numeric setting to its default. The diagram colours are kept.",
+          "reset_to_defaults": "Ignore the values above and restore these settings to their defaults. The diagram colours and replay settings are kept.",
           "min_supply_temperature": "Optional hard floor: the intake also ends if the air entering the room drops below this temperature. -30 (the default) means off. Only set it if there is a temperature the room must never see, e.g. near water pipes.",
           "max_supply_drop": "During intake the inside probe reads the air entering the room. Once the minimum phase has passed, the intake ends if that air is more than this much colder than the room (the basement temperature from the last exhaust). Works in any season: it follows the room, so a cold room still breathes.",
           "passive_intake": "Intake phases run with the intake fan off: after each exhaust, the room refills on its own through the core, for up to the passive intake maximum. The exhaust fan works as usual. Passive inflow shows whether air really came in.",
           "passive_intake_max_seconds": "With passive intake on, the longest an intake phase may last (it can end sooner by the usual rules: recovery target, settled, supply drop, cold limits).",
-          "passive_flow_delta": "During a passive intake, the inside probe moving this much towards the outdoor temperature counts as air flowing in.",
-          "replay_hours": "How much history the Create replay button replays. Also saved from the last Create replay action.",
-          "replay_playback_seconds": "How long one loop of the replay lasts.",
-          "replay_frames": "Number of frames (0 = one per minute of history, 60 to 1440)."
+          "passive_flow_delta": "During a passive intake, the inside probe moving this much towards the outdoor temperature counts as air flowing in."
         }
       },
       "colours": {
@@ -144,6 +139,20 @@
         },
         "data_description": {
           "reset_colours": "Ignore the rows above and restore the weather-service colour scale."
+        }
+      },
+      "replay": {
+        "title": "Replay",
+        "description": "Used by the Create replay button. Running the Create replay action with values saves them here too.",
+        "data": {
+          "replay_hours": "Replay hours",
+          "replay_playback_seconds": "Replay playback length",
+          "replay_frames": "Replay frames"
+        },
+        "data_description": {
+          "replay_hours": "How much history the Create replay button replays. Also saved from the last Create replay action.",
+          "replay_playback_seconds": "How long one loop of the replay lasts.",
+          "replay_frames": "Number of frames (0 = one per minute of history, 60 to 1440)."
         }
       }
     },

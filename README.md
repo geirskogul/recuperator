@@ -143,7 +143,7 @@ Changing mode takes effect within a second; a running fan is stopped and the pau
 
 ## Settings
 
-All settings take effect within a second, without restarting the cycle. Change them either on the device page (the **Configuration** section, one number per setting, handy on a dashboard), or all together with **Configure**, then **Settings**.
+All settings take effect within a second, without restarting the cycle. Change them either on the device page (the **Configuration** section, one number per setting, handy on a dashboard), or all together with **Configure**, then **Settings** (the replay settings are under **Configure**, **Replay**).
 
 | Setting | Default | Range | What it does |
 | --- | --- | --- | --- |
@@ -212,7 +212,7 @@ Settings you already have keep their stored values when a new version changes a 
 ## Resetting to defaults
 
 - **Reset settings to defaults** (button on the device page) resets all settings **and** the diagram colours.
-- **Configure**, **Settings**, tick **Reset settings to defaults**: resets the numeric settings only; the colours are kept.
+- **Configure**, **Settings**, tick **Reset settings to defaults**: resets the cycle settings only; the colours and replay settings are kept.
 - **Configure**, **Diagram colours**, tick **Reset colours to defaults**: resets the colours only.
 
 The chosen fans and probes, Breathing and Mode are always kept.
@@ -288,7 +288,7 @@ data:
   # frames: 0            # 0 = one per minute of history (60 to 1440)
 ```
 
-**Create replay button:** the device also has a **Create replay** button, which makes a new replay with the **saved replay settings**: *Replay hours*, *Replay playback length* and *Replay frames*. These are the last values given to the action (a call without values uses them as well), and you can also change them as numbers on the device page or in Configure, Settings.
+**Create replay button:** the device also has a **Create replay** button, which makes a new replay with the **saved replay settings**: *Replay hours*, *Replay playback length* and *Replay frames*. These are the last values given to the action (a call without values uses them as well), and you can also change them as numbers on the device page or in **Configure, Replay**.
 
 A dashboard with the replay and a button under it to make a fresh one at will (the image refreshes by itself when the new replay is ready):
 

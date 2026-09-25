@@ -103,6 +103,7 @@ class RecuperatorConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 MAX_STOPS = 20  # colour rows on the Diagram colours screen
+REPLAY_KEYS = ("replay_hours", "replay_playback_seconds", "replay_frames")
 CONF_RESET_COLOURS = "reset_colours"
 
 
@@ -126,11 +127,11 @@ class RecuperatorOptionsFlow(OptionsFlow):
     """Configure: a menu with the numeric settings and the diagram colours."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        return self.async_show_menu(step_id="init", menu_options=["settings", "colours"])
+        return self.async_show_menu(step_id="init", menu_options=["settings", "colours", "replay"])
 
     async def async_step_settings(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """Every numeric setting on one screen; reset puts them back (colours are kept)."""
-        keep = {k: v for k, v in self.config_entry.options.items() if k == CONF_PALETTE}
+        """The cycle's settings; reset puts them back (colours and replay settings are kept)."""
+        keep = {k: v for k, v in self.config_entry.options.items() if k == CONF_PALETTE or k in REPLAY_KEYS}
         if user_input is not None:
             if user_input.pop(CONF_RESET, False):
                 return self.async_create_entry(data={**DEFAULTS, **keep})
@@ -138,6 +139,8 @@ class RecuperatorOptionsFlow(OptionsFlow):
         current = {**DEFAULTS, **self.config_entry.options}
         schema: dict = {}
         for s in SETTINGS:
+            if s.key in REPLAY_KEYS:
+                continue
             cfg = selector.NumberSelectorConfig(
                 min=s.minimum, max=s.maximum, step=s.step, mode=selector.NumberSelectorMode.BOX
             )
@@ -149,6 +152,23 @@ class RecuperatorOptionsFlow(OptionsFlow):
         )
         schema[vol.Optional(CONF_RESET, default=False)] = selector.BooleanSelector()
         return self.async_show_form(step_id="settings", data_schema=vol.Schema(schema))
+
+    async def async_step_replay(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """The settings used by the Create replay button (and saved by the action)."""
+        if user_input is not None:
+            return self.async_create_entry(data={**self.config_entry.options, **user_input})
+        current = {**DEFAULTS, **self.config_entry.options}
+        schema: dict = {}
+        for s in SETTINGS:
+            if s.key not in REPLAY_KEYS:
+                continue
+            cfg = selector.NumberSelectorConfig(
+                min=s.minimum, max=s.maximum, step=s.step, mode=selector.NumberSelectorMode.BOX
+            )
+            if s.unit:
+                cfg["unit_of_measurement"] = s.unit
+            schema[vol.Required(s.key, default=current[s.key])] = selector.NumberSelector(cfg)
+        return self.async_show_form(step_id="replay", data_schema=vol.Schema(schema))
 
     async def async_step_colours(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """The diagram's colour scale: a temperature box and a colour picker per stop.
