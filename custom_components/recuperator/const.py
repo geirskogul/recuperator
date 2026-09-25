@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from homeassistant.const import Platform
 
 DOMAIN = "recuperator"
-MANUFACTURER = "Recuperator"
+MANUFACTURER = "geirskogul"
 MODEL = "Breathing controller"
 
 PLATFORMS: list[Platform] = [

@@ -1,14 +1,14 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 240" width="640" height="240" font-family="sans-serif">
 <defs>
-<linearGradient id="temp" x1="20" y1="0" x2="620" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0.000" stop-color="#bc271f"/><stop offset="0.067" stop-color="#c7301f"/><stop offset="0.133" stop-color="#d23a1f"/><stop offset="0.200" stop-color="#db451f"/><stop offset="0.267" stop-color="#df5321"/><stop offset="0.333" stop-color="#e46222"/><stop offset="0.400" stop-color="#e97024"/><stop offset="0.467" stop-color="#ee7e25"/><stop offset="0.533" stop-color="#f08b29"/><stop offset="0.600" stop-color="#f2972d"/><stop offset="0.667" stop-color="#f3a431"/><stop offset="0.733" stop-color="#f5b035"/><stop offset="0.800" stop-color="#f5bb39"/><stop offset="0.867" stop-color="#f4c63c"/><stop offset="0.933" stop-color="#f3d03e"/><stop offset="1.000" stop-color="#f2da41"/></linearGradient>
+<linearGradient id="temp" x1="20" y1="0" x2="620" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0.000" stop-color="#f2da41"/><stop offset="0.067" stop-color="#f3d03e"/><stop offset="0.133" stop-color="#f4c63c"/><stop offset="0.200" stop-color="#f5bb39"/><stop offset="0.267" stop-color="#f5b035"/><stop offset="0.333" stop-color="#f3a431"/><stop offset="0.400" stop-color="#f2972d"/><stop offset="0.467" stop-color="#f08b29"/><stop offset="0.533" stop-color="#ee7e25"/><stop offset="0.600" stop-color="#e97024"/><stop offset="0.667" stop-color="#e46222"/><stop offset="0.733" stop-color="#df5321"/><stop offset="0.800" stop-color="#db451f"/><stop offset="0.867" stop-color="#d23a1f"/><stop offset="0.933" stop-color="#c7301f"/><stop offset="1.000" stop-color="#bc271f"/></linearGradient>
 <marker id="head" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="#8a9199"/></marker>
 </defs>
-<line x1="460" y1="34" x2="180" y2="34" stroke="#8a9199" stroke-width="4" stroke-linecap="round" marker-end="url(#head)"/>
+<line x1="180" y1="34" x2="460" y2="34" stroke="#8a9199" stroke-width="4" stroke-linecap="round" marker-end="url(#head)"/>
 <text x="320" y="22" text-anchor="middle" font-size="16" font-weight="bold" fill="#8a9199">Exhaust</text>
 <path d="M 20,100 L 70,100 C 95,100 100,60 130,60 L 510,60 C 540,60 545,100 570,100 L 620,100 L 620,140 L 570,140 C 545,140 540,180 510,180 L 130,180 C 100,180 95,140 70,140 L 20,140 Z" fill="url(#temp)" stroke="#6b7280" stroke-width="3" stroke-linejoin="round"/>
-<text x="20" y="92" font-size="15" font-weight="bold" fill="#8a9199">Intake</text>
-<text x="20" y="206" font-size="15" fill="#8a9199">outside 38.0 °C</text>
-<text x="620" y="92" text-anchor="end" font-size="15" font-weight="bold" fill="#8a9199">Exhaust</text>
-<text x="620" y="206" text-anchor="end" font-size="15" fill="#8a9199">inside 21.0 °C</text>
-<text x="320" y="234" text-anchor="middle" font-size="13" fill="#8a9199">Summer: 38 °C outside, 21 °C basement</text>
+<text x="20" y="92" font-size="15" font-weight="bold" fill="#8a9199">Inside</text>
+<text x="20" y="206" font-size="15" fill="#8a9199">21.0 °C</text>
+<text x="620" y="92" text-anchor="end" font-size="15" font-weight="bold" fill="#8a9199">Outside</text>
+<text x="620" y="206" text-anchor="end" font-size="15" fill="#8a9199">38.0 °C</text>
+<text x="320" y="234" text-anchor="middle" font-size="13" fill="#8a9199">Summer: 21 °C basement, 38 °C outside</text>
 </svg>

@@ -222,7 +222,7 @@ The **Last change reason**, **Last exhaust**, **Last intake** and **Heat recover
 
 ## Diagram
 
-The **Diagram** image entity draws the recuperator as a pipe with pinched ends: the **intake** (outdoor) end on the left, the **exhaust** (room) end on the right. The inside is filled with a gradient from the outside probe's temperature to the inside probe's, in colours approximating the U.S. National Weather Service temperature maps (purple for extreme cold, blues around freezing, greens, yellow, orange, red for heat). The current phase and the airflow direction are shown above it. It redraws when the phase changes, and when the probes change at most every 10 seconds. The gradient is drawn straight between the two probes; the real temperature inside the core is not measured.
+The **Diagram** image entity draws the recuperator as a pipe with pinched ends: the **inside** (room) end on the left, the **outside** end on the right. The inside of the pipe is filled with a gradient from the inside probe's temperature to the outside probe's, in colours approximating the U.S. National Weather Service temperature maps (purple for extreme cold, blues around freezing, greens, yellow, orange, red for heat). The current phase and the airflow direction are shown above it: exhaust flows left to right (inside to outside), intake right to left. It redraws when the phase changes, and when the probes change at most every 10 seconds. The gradient is drawn straight between the two probes; the real temperature inside the core is not measured.
 
 ![Winter example](docs/diagram-winter.svg)
 ![Summer example](docs/diagram-summer.svg)

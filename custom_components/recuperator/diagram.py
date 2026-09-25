@@ -1,6 +1,6 @@
 """Draws the recuperator as an SVG: a symmetric "muffler" pipe filled with a
-temperature gradient from the outdoor end (left, intake) to the room end
-(right, exhaust), in weather-map colours, with the current airflow shown.
+temperature gradient from the inside (room) end on the left to the outside
+end on the right, in weather-map colours, with the current airflow shown.
 
 Pure Python (no Home Assistant), so it can be tested and previewed directly.
 """
@@ -92,16 +92,17 @@ def render_svg(
 ) -> str:
     """The whole picture as an SVG document.
 
-    Left end: outdoor side of the core (outside probe), where intake air comes in.
-    Right end: room side of the core (inside probe), where exhaust air comes in.
+    Left end: inside (room side of the core, inside probe).
+    Right end: outside (outdoor side of the core, outside probe).
     """
     stops = "".join(
-        f'<stop offset="{o:.3f}" stop-color="{c}"/>' for o, c in _stops(outside, inside)
+        f'<stop offset="{o:.3f}" stop-color="{c}"/>' for o, c in _stops(inside, outside)
     )
-    # Airflow arrow above the pipe: intake runs left to right, exhaust right to left.
+    # Airflow arrow above the pipe: exhaust runs inside to outside (left to right),
+    # intake runs outside to inside (right to left).
     arrow = ""
     if phase in ("intake", "exhaust"):
-        if phase == "intake":
+        if phase == "exhaust":
             x1, x2 = 180, 460
         else:
             x1, x2 = 460, 180
@@ -123,9 +124,9 @@ def render_svg(
 {arrow}
 <text x="320" y="22" text-anchor="middle" font-size="16" font-weight="bold" fill="{TEXT}">{escape(label)}</text>
 <path d="{_PIPE}" fill="url(#temp)" stroke="{OUTLINE}" stroke-width="3" stroke-linejoin="round"/>
-<text x="20" y="92" font-size="15" font-weight="bold" fill="{TEXT}">Intake</text>
-<text x="20" y="206" font-size="15" fill="{TEXT}">outside {_fmt(outside)}</text>
-<text x="620" y="92" text-anchor="end" font-size="15" font-weight="bold" fill="{TEXT}">Exhaust</text>
-<text x="620" y="206" text-anchor="end" font-size="15" fill="{TEXT}">inside {_fmt(inside)}</text>
+<text x="20" y="92" font-size="15" font-weight="bold" fill="{TEXT}">Inside</text>
+<text x="20" y="206" font-size="15" fill="{TEXT}">{_fmt(inside)}</text>
+<text x="620" y="92" text-anchor="end" font-size="15" font-weight="bold" fill="{TEXT}">Outside</text>
+<text x="620" y="206" text-anchor="end" font-size="15" fill="{TEXT}">{_fmt(outside)}</text>
 {title_el}
 </svg>"""
