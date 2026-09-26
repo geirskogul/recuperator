@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 import os
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigEntryState
+from homeassistant.config_entries import ConfigEntry, ConfigEntryState
 from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, SupportsResponse
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv, entity_registry as er
@@ -15,6 +15,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
 from .const import DOMAIN
+from .controller import probe_celsius
 from .replay import MAX_FRAMES, Frame, frame_times, render_replay_svg, sample
 
 SERVICE_CREATE_REPLAY = "create_replay"
@@ -38,20 +39,34 @@ SCHEMA = vol.Schema(
 SAVED = {ATTR_HOURS: "replay_hours", ATTR_PLAYBACK: "replay_playback_seconds", ATTR_FRAMES: "replay_frames"}
 
 
-def _float(value):
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
+def _error(key: str, **placeholders: str) -> ServiceValidationError:
+    """A translated error for the action."""
+    return ServiceValidationError(
+        translation_domain=DOMAIN, translation_key=key, translation_placeholders=placeholders or None
+    )
+
+
+def _pick_entry(hass: HomeAssistant, wanted: str | None) -> ConfigEntry:
+    """The recuperator the action is for.
+
+    With one recuperator it may be left out; with several it must be given,
+    rather than silently replaying whichever happens to come first.
+    """
+    entries = [e for e in hass.config_entries.async_entries(DOMAIN) if e.state is ConfigEntryState.LOADED]
+    if wanted is not None:
+        for entry in entries:
+            if entry.entry_id == wanted:
+                return entry
+        raise _error("recuperator_not_found")
+    if not entries:
+        raise _error("no_recuperator")
+    if len(entries) > 1:
+        raise _error("several_recuperators", names=", ".join(sorted(e.title for e in entries)))
+    return entries[0]
 
 
 async def _async_create_replay(hass: HomeAssistant, call: ServiceCall) -> ServiceResponse:
-    entries = [e for e in hass.config_entries.async_entries(DOMAIN) if e.state is ConfigEntryState.LOADED]
-    if (wanted := call.data.get(ATTR_CONFIG_ENTRY)) is not None:
-        entries = [e for e in entries if e.entry_id == wanted]
-    if not entries:
-        raise ServiceValidationError("No loaded recuperator found.")
-    entry = entries[0]
+    entry = _pick_entry(hass, call.data.get(ATTR_CONFIG_ENTRY))
     # Remember the values given, so the Create replay button reuses them.
     given = {SAVED[k]: call.data[k] for k in SAVED if k in call.data}
     if given:
@@ -59,12 +74,49 @@ async def _async_create_replay(hass: HomeAssistant, call: ServiceCall) -> Servic
     return await async_create_replay(hass, entry, end=call.data.get(ATTR_END))
 
 
-async def async_create_replay(hass: HomeAssistant, entry, end=None) -> dict:
-    """Build a replay for one recuperator with its saved replay settings."""
-    if "recorder" not in hass.config.components:
-        raise ServiceValidationError("The replay needs Home Assistant's recorder (history).")
+def replay_file(hass: HomeAssistant, entry: ConfigEntry) -> tuple[str, str]:
+    """(folder, file name) of the saved replay: /config/www/recuperator/<name>-replay.svg."""
+    return hass.config.path("www", "recuperator"), f"{slugify(entry.title)}-replay.svg"
+
+
+async def _async_history(hass: HomeAssistant, start: datetime, end: datetime, ids: list[str]) -> dict:
+    """Recorded states of the given entities, with attributes (for the probes' units)."""
     from homeassistant.components.recorder import get_instance, history
 
+    def _read() -> dict:
+        return history.get_significant_states(
+            hass,
+            start,
+            end,
+            entity_ids=ids,
+            include_start_time_state=True,
+            significant_changes_only=False,
+            minimal_response=False,
+            no_attributes=False,
+        )
+
+    return await get_instance(hass).async_add_executor_job(_read)
+
+
+def _frames(states: dict, times: list[datetime], inside_id: str, outside_id: str, phase_id: str | None) -> list[Frame]:
+    """One frame per time: the last recorded value of each entity at that moment."""
+
+    def series(entity_id, value):
+        return sorted((s.last_changed, value(s)) for s in states.get(entity_id, []))
+
+    inside = sample(series(inside_id, probe_celsius), times)
+    outside = sample(series(outside_id, probe_celsius), times)
+    phase = sample(series(phase_id, lambda s: s.state), times) if phase_id else ["stopped"] * len(times)
+    return [
+        Frame(dt_util.as_local(t), i, o, p or "stopped")
+        for t, i, o, p in zip(times, inside, outside, phase)
+    ]
+
+
+async def async_create_replay(hass: HomeAssistant, entry: ConfigEntry, end: datetime | None = None) -> dict:
+    """Build a replay for one recuperator with its saved replay settings."""
+    if "recorder" not in hass.config.components:
+        raise _error("recorder_needed")
     controller = entry.runtime_data
     hours = controller.setting("replay_hours")
     playback = controller.setting("replay_playback_seconds")
@@ -76,26 +128,13 @@ async def async_create_replay(hass: HomeAssistant, entry, end=None) -> dict:
 
     phase_id = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_phase")
     ids = [controller.inside_sensor, controller.outside_sensor] + ([phase_id] if phase_id else [])
-    states = await get_instance(hass).async_add_executor_job(
-        history.get_significant_states, hass, start, end, ids, None, True, False, False, True
-    )
-
-    def series(entity_id):
-        return sorted((s.last_changed, s.state) for s in states.get(entity_id, []))
-
+    states = await _async_history(hass, start, end, ids)
     times = frame_times(start, end, count)
-    inside = sample(series(controller.inside_sensor), times)
-    outside = sample(series(controller.outside_sensor), times)
-    phase = sample(series(phase_id), times) if phase_id else ["stopped"] * len(times)
-    frames = [
-        Frame(dt_util.as_local(t), _float(i), _float(o), p or "stopped")
-        for t, i, o, p in zip(times, inside, outside, phase)
-    ]
-    svg = render_replay_svg(frames, playback, entry.title, controller.palette)
+    frames = _frames(states, times, controller.inside_sensor, controller.outside_sensor, phase_id)
+    svg = render_replay_svg(frames, playback, entry.title, controller.palette, controller.display_unit)
 
     # Also save it where Home Assistant serves files: /config/www -> /local/
-    name = f"{slugify(entry.title)}-replay.svg"
-    folder = hass.config.path("www", "recuperator")
+    folder, name = replay_file(hass, entry)
 
     def _write() -> None:
         os.makedirs(folder, exist_ok=True)
@@ -112,6 +151,23 @@ async def async_create_replay(hass: HomeAssistant, entry, end=None) -> dict:
         "frames": len(frames),
         "playback_seconds": playback,
     }
+
+
+async def async_load_saved_replay(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """After a restart, show the last saved replay again instead of the placeholder."""
+    folder, name = replay_file(hass, entry)
+    path = os.path.join(folder, name)
+
+    def _read() -> tuple[bytes, float] | None:
+        try:
+            with open(path, "rb") as f:
+                return f.read(), os.path.getmtime(path)
+        except OSError:
+            return None
+
+    if (saved := await hass.async_add_executor_job(_read)) is not None:
+        svg, mtime = saved
+        entry.runtime_data.set_replay(svg, dt_util.utc_from_timestamp(mtime))
 
 
 def async_setup_services(hass: HomeAssistant) -> None:

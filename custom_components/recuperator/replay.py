@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from html import escape
 
-from .diagram import _PIPE, NEUTRAL, OUTLINE, PALETTE, TEXT, Palette, temperature_colour
+from .diagram import _PIPE, NEUTRAL, OUTLINE, PALETTE, TEXT, Palette, format_temperature, temperature_colour
 
 STOPS = 16  # colour positions along the pipe
 MAX_FRAMES = 1440
@@ -84,10 +84,6 @@ def _changing_text(values: list[str], dur: float, attrs: str) -> str:
     return "".join(out)
 
 
-def _fmt_temperature(t: float | None) -> str:
-    return "–" if t is None else f"{t:.1f} °C"
-
-
 def _gradient_stops(frames: list[Frame], palette: Palette, key_times: str, dur: float) -> str:
     """Every colour stop along the pipe animates through its colour in each frame."""
     stops = []
@@ -129,10 +125,10 @@ def _phase_labels_and_arrows(frames: list[Frame], key_times: str, dur: float) ->
     return "".join(labels) + arrows
 
 
-def _temperature_texts(frames: list[Frame], dur: float) -> str:
+def _temperature_texts(frames: list[Frame], dur: float, unit: str) -> str:
     """The two probe readings under the pipe ends, changing with the frames."""
-    inside = [_fmt_temperature(f.inside) for f in frames]
-    outside = [_fmt_temperature(f.outside) for f in frames]
+    inside = [format_temperature(f.inside, unit) for f in frames]
+    outside = [format_temperature(f.outside, unit) for f in frames]
     return _changing_text(inside, dur, f'x="20" y="216" font-size="15" fill="{TEXT}"') + _changing_text(
         outside, dur, f'x="620" y="216" text-anchor="end" font-size="15" fill="{TEXT}"'
     )
@@ -149,8 +145,12 @@ def render_replay_svg(
     playback_seconds: float = 60,
     title: str = "",
     palette: Palette = PALETTE,
+    unit: str = "°C",
 ) -> str:
-    """An animated SVG of the frames, looping every playback_seconds."""
+    """An animated SVG of the frames, looping every playback_seconds.
+
+    Frame temperatures are in °C; they are shown in `unit` (°C or °F).
+    """
     if len(frames) < 2:
         raise ValueError("at least two frames are needed")
     n = len(frames)
@@ -176,7 +176,7 @@ def render_replay_svg(
 <text x="20" y="92" font-size="15" font-weight="bold" fill="{TEXT}">Inside</text>
 <text x="620" y="92" text-anchor="end" font-size="15" font-weight="bold" fill="{TEXT}">Outside</text>
 </g>
-{_temperature_texts(frames, dur)}
+{_temperature_texts(frames, dur, unit)}
 <line x1="40" y1="240" x2="600" y2="240" stroke="{OUTLINE}" stroke-width="2"/>
 <circle cx="40" cy="240" r="6" fill="{TEXT}"><animate attributeName="cx" from="40" to="600" dur="{dur:g}s" repeatCount="indefinite"/></circle>
 <text x="40" y="264" font-size="13" fill="{TEXT}">{escape(start.strftime(fmt))}</text>

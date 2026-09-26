@@ -117,8 +117,16 @@ PHASE_TEXT = {
 }
 
 
-def _fmt(t: float | None) -> str:
-    return "–" if t is None else f"{t:.1f} °C"
+FAHRENHEIT = "°F"
+
+
+def format_temperature(celsius: float | None, unit: str = "°C") -> str:
+    """A °C reading as text in the display unit (°C or °F); "–" if unknown."""
+    if celsius is None:
+        return "–"
+    if unit == FAHRENHEIT:
+        return f"{celsius * 9 / 5 + 32:.1f} °F"
+    return f"{celsius:.1f} °C"
 
 
 def render_svg(
@@ -128,11 +136,13 @@ def render_svg(
     title: str = "",
     palette: Palette = PALETTE,
     passive: bool = False,
+    unit: str = "°C",
 ) -> str:
     """The whole picture as an SVG document.
 
     Left end: inside (room side of the core, inside probe).
     Right end: outside (outdoor side of the core, outside probe).
+    Temperatures are given in °C and shown in `unit` (°C or °F).
     """
     stops = "".join(
         f'<stop offset="{o:.3f}" stop-color="{c}"/>' for o, c in _stops(inside, outside, palette=palette)
@@ -165,8 +175,8 @@ def render_svg(
 <text x="320" y="22" text-anchor="middle" font-size="16" font-weight="bold" fill="{TEXT}">{escape(label)}</text>
 <path d="{_PIPE}" fill="url(#temp)" stroke="{OUTLINE}" stroke-width="3" stroke-linejoin="round"/>
 <text x="20" y="92" font-size="15" font-weight="bold" fill="{TEXT}">Inside</text>
-<text x="20" y="206" font-size="15" fill="{TEXT}">{_fmt(inside)}</text>
+<text x="20" y="206" font-size="15" fill="{TEXT}">{format_temperature(inside, unit)}</text>
 <text x="620" y="92" text-anchor="end" font-size="15" font-weight="bold" fill="{TEXT}">Outside</text>
-<text x="620" y="206" text-anchor="end" font-size="15" fill="{TEXT}">{_fmt(outside)}</text>
+<text x="620" y="206" text-anchor="end" font-size="15" fill="{TEXT}">{format_temperature(outside, unit)}</text>
 {title_el}
 </svg>"""

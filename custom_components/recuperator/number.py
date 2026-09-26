@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from homeassistant.components.number import NumberEntity, NumberMode
+from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -16,7 +16,12 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddE
 
 
 class SettingNumber(RecuperatorEntity, NumberEntity):
-    """A setting; changes apply on the next tick without restarting the cycle."""
+    """A setting; changes apply on the next tick without restarting the cycle.
+
+    Absolute temperatures are temperature numbers, so Home Assistant shows them
+    in the user's units (°C is stored). Advanced settings start disabled on new
+    installs; they are always available in Configure, Settings.
+    """
 
     _attr_entity_category = EntityCategory.CONFIG
     _attr_mode = NumberMode.BOX
@@ -30,6 +35,9 @@ class SettingNumber(RecuperatorEntity, NumberEntity):
         self._attr_native_step = setting.step
         self._attr_native_unit_of_measurement = setting.unit
         self._attr_icon = setting.icon
+        self._attr_entity_registry_enabled_default = not setting.advanced
+        if setting.temperature:
+            self._attr_device_class = NumberDeviceClass.TEMPERATURE
 
     @property
     def native_value(self) -> float:

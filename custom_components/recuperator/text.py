@@ -8,6 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from .const import DOMAIN
 from .diagram import palette_to_text
 from .entity import RecuperatorEntity
 
@@ -23,6 +24,7 @@ class DiagramColours(RecuperatorEntity, TextEntity):
     """
 
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_entity_registry_enabled_default = False  # Configure, Diagram colours is the friendlier way
     _attr_mode = TextMode.TEXT
     _attr_native_max = 255
     _attr_icon = "mdi:palette"
@@ -35,4 +37,8 @@ class DiagramColours(RecuperatorEntity, TextEntity):
         try:
             await self._controller.async_set_palette(value)
         except ValueError as err:
-            raise HomeAssistantError(f"Diagram colours not changed: {err}") from err
+            raise HomeAssistantError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_palette",
+                translation_placeholders={"error": str(err)},
+            ) from err

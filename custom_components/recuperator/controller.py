@@ -3,24 +3,28 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from datetime import timedelta
+from datetime import datetime, timedelta
 import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_ENTITY_ID,
+    ATTR_UNIT_OF_MEASUREMENT,
     SERVICE_TURN_OFF,
     SERVICE_TURN_ON,
     STATE_ON,
     STATE_UNAVAILABLE,
     STATE_UNKNOWN,
+    UnitOfTemperature,
 )
-from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, State, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import (
     async_track_state_change_event,
     async_track_time_interval,
 )
 from homeassistant.util import dt as dt_util
+from homeassistant.util.unit_conversion import TemperatureConverter
 
 from .const import (
     CONF_EXHAUST_SWITCH,
@@ -161,10 +165,10 @@ class RecuperatorController:
         return lambda: self._replay_listeners.remove(update)
 
     @callback
-    def set_replay(self, svg: bytes) -> None:
-        """Store a new replay and tell the Diagram replay image."""
+    def set_replay(self, svg: bytes, when: datetime | None = None) -> None:
+        """Store a new replay (made at `when`, default now) and tell the replay image."""
         self.replay_svg = svg
-        self.replay_time = dt_util.utcnow()
+        self.replay_time = when or dt_util.utcnow()
         for update in list(self._replay_listeners):
             update()
 
@@ -223,7 +227,7 @@ class RecuperatorController:
         """Start the cycle once both probes read, or when the wait runs out."""
         if self._start_deadline is None:
             return
-        inside, outside = self._probes()
+        inside, outside = self.probes()
         if (inside is None or outside is None) and now < self._start_deadline:
             return
         self._start_deadline = None
@@ -244,16 +248,16 @@ class RecuperatorController:
         return dt_util.utcnow().timestamp()
 
     def _read(self, entity_id: str) -> float | None:
-        """A probe's temperature, or None if it is unavailable or not a number."""
-        state = self.hass.states.get(entity_id)
-        if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
-            return None
-        try:
-            return float(state.state)
-        except ValueError:
-            return None
+        """A probe's temperature in °C, or None if it is unavailable or not a number."""
+        return probe_celsius(self.hass.states.get(entity_id))
 
-    def _probes(self) -> tuple[float | None, float | None]:
+    @property
+    def display_unit(self) -> str:
+        """The unit the user sees temperatures in (°C or °F)."""
+        return self.hass.config.units.temperature_unit
+
+    def probes(self) -> tuple[float | None, float | None]:
+        """(inside, outside) probe readings in °C."""
         return self._read(self.inside_sensor), self._read(self.outside_sensor)
 
     @callback
@@ -270,7 +274,7 @@ class RecuperatorController:
         if not self.enabled:
             return
         self._maybe_start(now)
-        changed = self.logic.step(now, self.mode, self.settings, *self._probes())
+        changed = self.logic.step(now, self.mode, self.settings, *self.probes())
         await self._async_apply()
         if changed:
             _LOGGER.debug(
@@ -283,7 +287,7 @@ class RecuperatorController:
 
     # -- driving the fans -------------------------------------------------------------
 
-    def _wanted(self) -> dict[str, bool]:
+    def wanted_fans(self) -> dict[str, bool]:
         """Which fans should be on now (every fan this recuperator drives)."""
         phase = self.logic.phase if self.enabled else None
         wanted = {
@@ -311,7 +315,7 @@ class RecuperatorController:
                 return a
         return None
 
-    def _fans(self) -> list[str]:
+    def fans(self) -> list[str]:
         """Every fan this recuperator switches, the linked unit's included."""
         linked = [f for f in (self.link_exhaust_switch, self.link_intake_switch) if f]
         return [self.exhaust_switch, self.intake_switch, *linked]
@@ -331,7 +335,7 @@ class RecuperatorController:
         """
         if self._hands_off:
             return
-        wanted = self._wanted()
+        wanted = self.wanted_fans()
         for entity_id, on in wanted.items():
             if not on and self._is_on(entity_id) is not False:
                 await self._async_command(entity_id, False)
@@ -364,7 +368,7 @@ class RecuperatorController:
 
     async def _async_both_off(self) -> None:
         """Every fan off (the linked unit's too)."""
-        for entity_id in self._fans():
+        for entity_id in self.fans():
             if self._is_on(entity_id) is not False:
                 self._last_command.pop(entity_id, None)
                 await self._async_command(entity_id, False)
@@ -389,7 +393,7 @@ class RecuperatorController:
         """What the linked unit is doing: exhaust, intake, idle or not linked."""
         if self.link_type == LINK_NONE:
             return LINKED_NOT_LINKED
-        wanted = self._wanted()
+        wanted = self.wanted_fans()
         if self.link_intake_switch and wanted.get(self.link_intake_switch):
             return LINKED_INTAKE
         if self.link_exhaust_switch and wanted.get(self.link_exhaust_switch):
@@ -403,3 +407,24 @@ def linked_fans(data) -> tuple[str | None, str | None]:
     exhaust = data.get(CONF_LINK_EXHAUST_SWITCH) if link_type in (LINK_RECUPERATOR, LINK_EXHAUST_FAN) else None
     intake = data.get(CONF_LINK_INTAKE_SWITCH) if link_type in (LINK_RECUPERATOR, LINK_INTAKE_FAN) else None
     return exhaust or None, intake or None
+
+
+def probe_celsius(state: State | None) -> float | None:
+    """A probe state as °C, whatever unit the probe reports in.
+
+    The cycle works in °C throughout. A probe without a unit, or with one that is
+    not a temperature unit, is taken to be in °C.
+    """
+    if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+        return None
+    try:
+        value = float(state.state)
+    except ValueError:
+        return None
+    unit = state.attributes.get(ATTR_UNIT_OF_MEASUREMENT)
+    if unit in (None, UnitOfTemperature.CELSIUS):
+        return value
+    try:
+        return TemperatureConverter.convert(value, unit, UnitOfTemperature.CELSIUS)
+    except (HomeAssistantError, ValueError):
+        return value

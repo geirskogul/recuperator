@@ -1,0 +1,45 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  pytest:
+    name: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+          cache-dependency-path: requirements_test.txt
+
+      - name: Install
+        run: pip install -r requirements_test.txt
+
+      - name: Run the tests
+        run: >
+          pytest --junitxml=report.xml
+          --cov --cov-report=term-missing:skip-covered --cov-report=xml
+          -p no:cacheprovider
+
+      - name: Report failures as annotations
+        if: failure()
+        run: |
+          python - <<'EOF'
+          import os
+          import xml.etree.ElementTree as ET
+
+          if not os.path.exists("report.xml"):
+              raise SystemExit(0)
+          for case in ET.parse("report.xml").iter("testcase"):
+              for problem in list(case.findall("failure")) + list(case.findall("error")):
+                  name = f"{case.get('classname')}.{case.get('name')}"
+                  text = (problem.get("message") or "") + "\n" + (problem.text or "")
+                  text = text[-3000:].replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+                  print(f"::error title={name}::{text}")
+          EOF

@@ -31,6 +31,7 @@ from .const import (
     LINK_TYPES,
     REPLAY_KEYS,
     SETTINGS,
+    unique_id_for,
 )
 from .controller import linked_fans
 
@@ -102,9 +103,7 @@ class RecuperatorConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             errors = _errors(user_input, _fans_in_use(self.hass))
             if not errors:
-                await self.async_set_unique_id(
-                    f"{user_input[CONF_EXHAUST_SWITCH]}|{user_input[CONF_INTAKE_SWITCH]}"
-                )
+                await self.async_set_unique_id(unique_id_for(user_input))
                 self._abort_if_unique_id_configured()
                 name = user_input.pop(CONF_NAME)
                 return self.async_create_entry(title=name, data=user_input, options=dict(DEFAULTS))
@@ -123,7 +122,10 @@ class RecuperatorConfigFlow(ConfigFlow, domain=DOMAIN):
             in_use.update({fan: entry.title for fan in linked_fans(entry.data) if fan})
             errors = _errors(user_input, in_use)
             if not errors:
-                return self.async_update_reload_and_abort(entry, data_updates=user_input)
+                # The unique ID follows the fans, so the old pair is not left "taken".
+                return self.async_update_reload_and_abort(
+                    entry, unique_id=unique_id_for(user_input), data_updates=user_input
+                )
         defaults = user_input or dict(entry.data)
         return self.async_show_form(
             step_id="reconfigure", data_schema=vol.Schema(_devices_schema(defaults)), errors=errors

@@ -71,8 +71,10 @@ class RecuperatorDiagram(RecuperatorEntity, ImageEntity):
 
     async def async_image(self) -> bytes | None:
         c = self._controller
-        inside, outside = c._probes()
-        return render_svg(outside, inside, c.logic.phase, self._entry.title, c.palette, c.logic.passive).encode()
+        inside, outside = c.probes()
+        return render_svg(
+            outside, inside, c.logic.phase, self._entry.title, c.palette, c.logic.passive, c.display_unit
+        ).encode()
 
 
 class RecuperatorReplay(RecuperatorEntity, ImageEntity):

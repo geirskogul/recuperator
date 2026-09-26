@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from homeassistant.const import Platform
+from homeassistant.const import Platform, UnitOfTemperature
 
 DOMAIN = "recuperator"
 MANUFACTURER = "geirskogul"
@@ -29,6 +29,22 @@ CONF_INSIDE_SENSOR = "inside_sensor"  # probe at the basement end of the core
 CONF_OUTSIDE_SENSOR = "outside_sensor"  # probe at the outdoor end of the core
 CONF_PASSIVE_INTAKE = "passive_intake"  # intake with the intake fan off (passive re-ventilation)
 CONF_PALETTE = "diagram_palette"  # the diagram's colour scale, as text (see diagram.py)
+
+# Every entity a recuperator is wired to (kept up to date when one is renamed).
+WIRING_KEYS = (
+    CONF_EXHAUST_SWITCH,
+    CONF_INTAKE_SWITCH,
+    CONF_INSIDE_SENSOR,
+    CONF_OUTSIDE_SENSOR,
+    "link_exhaust_switch",
+    "link_intake_switch",
+)
+
+
+def unique_id_for(data) -> str:
+    """A recuperator's unique ID: its exhaust and intake fans."""
+    return f"{data[CONF_EXHAUST_SWITCH]}|{data[CONF_INTAKE_SWITCH]}"
+
 
 # -- modes ---------------------------------------------------------------------
 
@@ -85,7 +101,13 @@ TIMED_SENSOR = "sensor_unavailable"
 
 @dataclass(frozen=True)
 class Setting:
-    """One tunable setting: its default and the range the UI allows."""
+    """One tunable setting: its default and the range the UI allows.
+
+    temperature: an absolute temperature (°C), shown in the user's units.
+    Temperature *differences* stay in °C, which Home Assistant cannot convert.
+    advanced: its number entity starts disabled on new installs (still in
+    Configure, Settings), to keep the device page to the everyday settings.
+    """
 
     key: str
     default: float
@@ -94,25 +116,32 @@ class Setting:
     step: float
     unit: str | None
     icon: str
+    temperature: bool = False
+    advanced: bool = False
 
+
+C = UnitOfTemperature.CELSIUS
 
 SETTINGS: tuple[Setting, ...] = (
     Setting("recovery_percent", 80, 5, 100, 1, "%", "mdi:percent"),
-    Setting("settle_seconds", 15, 5, 1800, 1, "s", "mdi:timer-sand"),
-    Setting("settle_delta", 0.2, 0.05, 2.0, 0.05, "°C", "mdi:thermometer-minus"),
+    Setting("settle_seconds", 15, 5, 1800, 1, "s", "mdi:timer-sand", advanced=True),
+    Setting("settle_delta", 0.2, 0.05, 2.0, 0.05, C, "mdi:thermometer-minus", advanced=True),
     Setting("min_phase_seconds", 20, 5, 3600, 1, "s", "mdi:timer-outline"),
     Setting("max_phase_seconds", 120, 10, 86400, 1, "s", "mdi:timer-alert-outline"),
     Setting("pause_seconds", 1, 0, 30, 0.5, "s", "mdi:pause-circle-outline"),
     Setting("timed_exhaust_seconds", 60, 10, 86400, 1, "s", "mdi:timer-arrow-up-outline"),
     Setting("timed_intake_seconds", 60, 10, 86400, 1, "s", "mdi:timer-arrow-down-outline"),
-    Setting("similar_band", 2.0, 0, 20, 0.1, "°C", "mdi:approximately-equal"),
-    Setting("cold_threshold", -5, -40, 15, 0.5, "°C", "mdi:snowflake-thermometer"),
+    Setting("similar_band", 2.0, 0, 20, 0.1, C, "mdi:approximately-equal", advanced=True),
+    Setting("cold_threshold", -5, -40, 15, 0.5, C, "mdi:snowflake-thermometer", temperature=True),
     Setting("cold_intake_max_seconds", 300, 10, 86400, 1, "s", "mdi:snowflake-alert"),
-    Setting("cold_exhaust_extra_seconds", 7, 0, 60, 1, "s", "mdi:snowflake-melt"),
-    Setting("max_supply_drop", 3.0, 0.5, 20, 0.5, "°C", "mdi:thermometer-chevron-down"),
-    Setting("min_supply_temperature", -30, -30, 25, 0.5, "°C", "mdi:home-thermometer-outline"),
+    Setting("cold_exhaust_extra_seconds", 7, 0, 60, 1, "s", "mdi:snowflake-melt", advanced=True),
+    Setting("max_supply_drop", 3.0, 0.5, 20, 0.5, C, "mdi:thermometer-chevron-down"),
+    Setting(
+        "min_supply_temperature", -30, -30, 25, 0.5, C, "mdi:home-thermometer-outline",
+        temperature=True, advanced=True,
+    ),
     Setting("passive_intake_max_seconds", 1800, 60, 86400, 60, "s", "mdi:timer-sand-complete"),
-    Setting("passive_flow_delta", 0.3, 0.05, 5, 0.05, "°C", "mdi:weather-windy"),
+    Setting("passive_flow_delta", 0.3, 0.05, 5, 0.05, C, "mdi:weather-windy", advanced=True),
     # Replay: used by the Create replay button, and saved from the last Create replay action.
     Setting("replay_hours", 24, 0.25, 168, 0.25, "h", "mdi:history"),
     Setting("replay_playback_seconds", 60, 5, 900, 1, "s", "mdi:play-speed"),

@@ -11,14 +11,15 @@ from __future__ import annotations
 import logging
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv, device_registry as dr, entity_registry as er
+from homeassistant.helpers.event import async_track_entity_registry_updated_event
 from homeassistant.helpers.typing import ConfigType
 
-from .const import DOMAIN, LEGACY_TIMED_PHASE, PLATFORMS
+from .const import DOMAIN, LEGACY_TIMED_PHASE, PLATFORMS, WIRING_KEYS, unique_id_for
 from .controller import RecuperatorController
 from .entity import main_device_info
-from .services import async_setup_services
+from .services import async_load_saved_replay, async_setup_services
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,10 +44,39 @@ async def async_setup_entry(hass: HomeAssistant, entry: RecuperatorConfigEntry) 
     entry.runtime_data = controller
     # The main device first: the Replay device hangs off it (via_device).
     dr.async_get(hass).async_get_or_create(config_entry_id=entry.entry_id, **main_device_info(entry))
+    await async_load_saved_replay(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await controller.async_start()
     entry.async_on_unload(entry.add_update_listener(_async_options_updated))
+    entry.async_on_unload(_async_follow_renames(hass, entry))
     return True
+
+
+@callback
+def _async_follow_renames(hass: HomeAssistant, entry: RecuperatorConfigEntry):
+    """Keep working when a fan or probe gets a new entity ID.
+
+    The wiring is stored by entity ID, so a rename in Home Assistant would
+    otherwise leave the recuperator driving an entity that no longer exists.
+    Store the new ID (and the unique ID built from the fans), then restart.
+    """
+    wired = [entry.data[k] for k in WIRING_KEYS if entry.data.get(k)]
+
+    @callback
+    def _renamed(event: Event) -> None:
+        old = event.data.get("old_entity_id")
+        if event.data.get("action") != "update" or not old:
+            return
+        new = event.data["entity_id"]
+        changes = {k: new for k in WIRING_KEYS if entry.data.get(k) == old}
+        if not changes:
+            return
+        data = {**entry.data, **changes}
+        _LOGGER.info("%s: %s was renamed to %s; following it", entry.title, old, new)
+        hass.config_entries.async_update_entry(entry, data=data, unique_id=unique_id_for(data))
+        hass.config_entries.async_schedule_reload(entry.entry_id)
+
+    return async_track_entity_registry_updated_event(hass, wired, _renamed)
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: RecuperatorConfigEntry) -> bool:
