@@ -7,6 +7,8 @@ from custom_components.recuperator.const import (
     PHASE_INTAKE,
     PHASE_PAUSE,
     REASON_COLD_LIMIT,
+    REASON_MAX_TIME,
+    REASON_PHASE_LIMIT,
     REASON_RECOVERED,
     REASON_SUPPLY_DROP,
     REASON_TIMED,
@@ -120,3 +122,74 @@ def test_intake_only_mode_starts_with_intake() -> None:
     logic = BreathingLogic()
     logic.start(0, "intake_only", Settings(), 20, 5)
     assert logic.phase == PHASE_INTAKE
+
+
+def test_limited_intake_in_timed_mode() -> None:
+    """Timed lengths 60/60: with limited intake at 50 %, each intake lasts half the exhaust."""
+    s = Settings.from_mapping(
+        {"timed_exhaust_seconds": 60, "timed_intake_seconds": 60, "phase_limit": "limited_intake", "phase_limit_percent": 50}
+    )
+    logic = BreathingLogic()
+    logic.start(0, "timed", s, 20, 5)
+    run(logic, "timed", s, 1, 300, steady(20, 5))
+    assert logic.last_exhaust_seconds == 60
+    assert logic.last_intake_seconds == 30
+    assert logic.last_reason in (REASON_PHASE_LIMIT, REASON_TIMED)
+
+
+def test_limited_intake_in_automatic_mode() -> None:
+    """Probes that never recover: every phase would run to Maximum phase; the intake is cut to 90 % of the exhaust."""
+    s = Settings.from_mapping(
+        {"max_phase_seconds": 100, "min_phase_seconds": 10, "phase_limit": "limited_intake", "similar_band": 0}
+    )
+    logic = BreathingLogic()
+    logic.start(0, "automatic", s, 20.0, 5.0)
+    run(logic, "automatic", s, 1, 150, steady(20.0, 5.0))  # exhaust ends at max time, intake runs
+    assert logic.last_exhaust_seconds == 100
+    run(logic, "automatic", s, 151, 150, steady(20.0, 5.0))
+    assert logic.last_intake_seconds == 90
+    assert logic.last_reason in (REASON_PHASE_LIMIT, REASON_MAX_TIME)
+
+
+def test_limited_exhaust_keeps_exhaust_shorter() -> None:
+    s = Settings.from_mapping(
+        {"timed_exhaust_seconds": 60, "timed_intake_seconds": 40, "phase_limit": "limited_exhaust", "phase_limit_percent": 50}
+    )
+    logic = BreathingLogic()
+    logic.start(0, "timed", s, 20, 5)
+    run(logic, "timed", s, 1, 300, steady(20, 5))
+    assert logic.last_intake_seconds == 40
+    assert logic.last_exhaust_seconds == 20  # after the first full-length exhaust
+
+
+def test_phase_limit_never_below_minimum_phase() -> None:
+    s = Settings.from_mapping(
+        {"timed_exhaust_seconds": 20, "timed_intake_seconds": 60, "min_phase_seconds": 15,
+         "phase_limit": "limited_intake", "phase_limit_percent": 10}
+    )
+    logic = BreathingLogic()
+    logic.start(0, "timed", s, 20, 5)
+    run(logic, "timed", s, 1, 200, steady(20, 5))
+    assert logic.last_intake_seconds == 15  # 10 % of 20 s would be 2 s
+
+
+def test_phase_limit_off_by_default() -> None:
+    s = Settings.from_mapping({"timed_exhaust_seconds": 30, "timed_intake_seconds": 90})
+    assert s.phase_limit == "off"
+    logic = BreathingLogic()
+    logic.start(0, "timed", s, 20, 5)
+    run(logic, "timed", s, 1, 300, steady(20, 5))
+    assert logic.last_intake_seconds == 90
+
+
+def test_cold_exhaust_rule_wins_over_limited_exhaust() -> None:
+    """Frost protection: in the cold the exhaust still runs at least as long as the last intake."""
+    s = Settings.from_mapping(
+        {"max_phase_seconds": 100, "min_phase_seconds": 10, "similar_band": 0,
+         "phase_limit": "limited_exhaust", "phase_limit_percent": 50}
+    )
+    logic = BreathingLogic()
+    logic.start(0, "automatic", s, 20.0, -10.0)
+    run(logic, "automatic", s, 1, 400, steady(20.0, -10.0))
+    assert logic.cold
+    assert logic.last_exhaust_seconds >= logic.last_intake_seconds

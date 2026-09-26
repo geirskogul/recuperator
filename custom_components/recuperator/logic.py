@@ -24,6 +24,9 @@ from .const import (
     DEFAULTS,
     FROST_FACE_TEMPERATURE,
     LEGACY_TIMED_PHASE,
+    LIMIT_EXHAUST,
+    LIMIT_INTAKE,
+    LIMIT_OFF,
     MODE_EXHAUST_ONLY,
     MODE_INTAKE_ONLY,
     MODE_TIMED,
@@ -33,6 +36,7 @@ from .const import (
     PHASE_STOPPED,
     REASON_COLD_LIMIT,
     REASON_MAX_TIME,
+    REASON_PHASE_LIMIT,
     REASON_RECOVERED,
     REASON_SETTLED,
     REASON_STARTED,
@@ -72,7 +76,9 @@ class Settings:
     min_supply_temperature: float = DEFAULTS["min_supply_temperature"]
     passive_intake_max_seconds: float = DEFAULTS["passive_intake_max_seconds"]
     passive_flow_delta: float = DEFAULTS["passive_flow_delta"]
+    phase_limit_percent: float = DEFAULTS["phase_limit_percent"]
     passive_intake: bool = False
+    phase_limit: str = LIMIT_OFF
 
     @classmethod
     def from_mapping(cls, values: dict) -> Settings:
@@ -86,6 +92,7 @@ class Settings:
         return cls(
             **{k: float(values.get(k, v)) for k, v in DEFAULTS.items() if k in own},
             passive_intake=bool(values.get("passive_intake", False)),
+            phase_limit=str(values.get("phase_limit", LIMIT_OFF)),
         )
 
     def timed_seconds(self, phase: str) -> float:
@@ -336,23 +343,33 @@ class BreathingLogic:
         if self.timed_reason != TIMED_NOT:
             if self.cold and self.phase == PHASE_INTAKE and elapsed >= s.cold_intake_max_seconds:
                 return REASON_COLD_LIMIT  # even timed intake respects the cold limit
+            limit = self._phase_limit(s, passive)
+            if limit is not None and elapsed >= limit:
+                return REASON_PHASE_LIMIT
             length = s.passive_intake_max_seconds if passive else s.timed_seconds(self.phase)
             return REASON_TIMED if elapsed >= length else None
 
         lower = s.min_phase_seconds
         cap = max(s.passive_intake_max_seconds if passive else s.max_phase_seconds, lower)
         cap_reason = REASON_MAX_TIME
+        cold_exhaust = bool(
+            self.cold and self.phase == PHASE_EXHAUST and self.last_intake_seconds and not self.last_intake_passive
+        )
         if self.cold and self.phase == PHASE_INTAKE and s.cold_intake_max_seconds < cap:
             cap, cap_reason = s.cold_intake_max_seconds, REASON_COLD_LIMIT
             lower = min(lower, cap)
-        elif self.cold and self.phase == PHASE_EXHAUST and self.last_intake_seconds and not self.last_intake_passive:
+        elif cold_exhaust:
             # In the cold, exhaust at least as long as the last intake (keeps the
             # core's outer end from freezing and the basement from cooling), but
-            # no more than cold_exhaust_extra_seconds longer.
+            # no more than cold_exhaust_extra_seconds longer. This frost protection
+            # wins over a limited exhaust.
             cold_cap = self.last_intake_seconds + s.cold_exhaust_extra_seconds
             if cold_cap < cap:
                 cap, cap_reason = cold_cap, REASON_COLD_LIMIT
             lower = min(max(lower, self.last_intake_seconds), cap)
+        limit = None if cold_exhaust else self._phase_limit(s, passive)
+        if limit is not None and limit < cap:
+            cap, cap_reason = limit, REASON_PHASE_LIMIT
 
         if elapsed >= cap:
             return cap_reason
@@ -374,6 +391,24 @@ class BreathingLogic:
         ):
             return REASON_SETTLED
         return None
+
+    def _phase_limit(self, s: Settings, passive: bool) -> float | None:
+        """The longest the running phase may last under the phase limit, if one applies.
+
+        Limited intake: an intake lasts at most phase_limit_percent of the last
+        exhaust; limited exhaust: the other way round. Passive intakes are neither
+        limited nor used as a measure (the intake fan is off). Never below the
+        minimum phase, which protects the fans and relays.
+        """
+        if self.phase == PHASE_INTAKE and s.phase_limit == LIMIT_INTAKE and not passive:
+            other = self.last_exhaust_seconds
+        elif self.phase == PHASE_EXHAUST and s.phase_limit == LIMIT_EXHAUST and not self.last_intake_passive:
+            other = self.last_intake_seconds
+        else:
+            return None
+        if not other:
+            return None  # nothing to compare with yet
+        return max(other * s.phase_limit_percent / 100, s.min_phase_seconds)
 
     def _watch_passive_flow(self, elapsed: float, s: Settings, inside) -> None:
         """During a passive intake, notice air actually flowing in.

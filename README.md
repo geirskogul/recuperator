@@ -102,6 +102,7 @@ A running phase ends at the first of:
 2. **Recovered**: the far probe has closed *Recovery target* per cent of the gap between where it started and the air temperature. The air temperature is the reference probe, or the last measured indoor/outdoor temperature while the reference probe is still catching up after the switch (probes need 10–30 s to register a change).
 3. **Settled**: the far probe has got at least halfway to the recovery target, and both probes have since moved less than *Settle change* during the last *Settle window*. A far probe that has not moved yet does **not** count as settled: it means the core is still doing its job.
 4. **Maximum phase**: a hard time limit.
+5. **Phase limit** (only if turned on, see [Phase limit](#phase-limit)): the intake (or the exhaust) has reached its share of the other phase's last length.
 
 ...but never before **Minimum phase**. Then both fans are off for **Pause**, and the other phase starts.
 
@@ -126,7 +127,7 @@ For a recuperator named *Basement Breather*:
 | `switch.basement_breather_breathing` | **Breathing** on/off. Off: both fans are switched off once, then left alone (you can run them by hand). |
 | `select.basement_breather_mode` | **Mode**: Automatic, Timed, Exhaust only, Intake only |
 | `sensor.basement_breather_phase` | Exhaust, Pause, Intake or Stopped. Attributes: when the phase started, the next phase, whether (and why) it is timed, cold weather, mode |
-| `sensor.basement_breather_last_change_reason` | Why the last phase ended: Recovered, Settled, Maximum time, Cold limit, Timed, Supply colder than room, Supply below floor, Started, Stopped |
+| `sensor.basement_breather_last_change_reason` | Why the last phase ended: Recovered, Settled, Maximum time, Cold limit, Timed, Supply colder than room, Supply below floor, Phase limit, Started, Stopped |
 | `sensor.basement_breather_last_exhaust` / `..._last_intake` | Length of the last exhaust / intake phase (s) |
 | `sensor.basement_breather_basement_temperature` | Indoor air temperature: the inside probe at the end of the last exhaust |
 | `sensor.basement_breather_outdoor_temperature` | Outdoor air temperature: the outside probe at the end of the last intake |
@@ -135,6 +136,7 @@ For a recuperator named *Basement Breather*:
 | `sensor.basement_breather_linked_unit` | What the linked unit is doing: Intake, Exhaust or Idle. Only there while a unit is linked (see [Linked unit](#linked-unit)) |
 | `text.basement_breather_diagram_colours` | The diagram's colour scale, editable (see [Diagram colours](#diagram-colours)) |
 | `switch.basement_breather_passive_intake` | **Passive intake** on/off (see [Passive intake](#passive-intake)) |
+| `select.basement_breather_phase_limit` | **Phase limit**: Off, Limited intake, Limited exhaust (see [Phase limit](#phase-limit)) |
 | `binary_sensor.basement_breather_passive_inflow` | On if air was seen flowing in during the running or last passive intake |
 | `sensor.basement_breather_passive_inflow_delay` | How long into the last passive intake the inflow was seen (s) |
 | `binary_sensor.basement_breather_cold_weather` | On while the cold-weather limits apply |
@@ -181,6 +183,8 @@ All settings take effect within a second, without restarting the cycle. Temperat
 | Passive intake | off | on/off | Intake phases run with the intake fan **off** (see [Passive intake](#passive-intake)) |
 | Passive intake maximum | 1800 s (30 min) | 60–86400 | The longest a passive intake may last |
 | Passive inflow change | 0.3 °C | 0.05–5 | How far the inside probe must move towards the outdoor temperature during a passive intake to count as air flowing in |
+| Phase limit | Off | Off, Limited intake, Limited exhaust | Keep the intake (or the exhaust) shorter than the other phase (see [Phase limit](#phase-limit)) |
+| Phase limit share | 90 % | 10–100 | With a phase limit on: how long the limited phase may last, as a share of the other phase's last length |
 | Diagram colours | weather-service scale | text | The diagram's colour stops (see [Diagram colours](#diagram-colours)) |
 | Minimum supply temperature | −30 °C (off) | −30–25 | Optional hard floor: the intake also ends if the air entering the room drops below this. Only set it if there is a temperature the room must never see (for example water pipes). |
 
@@ -224,6 +228,22 @@ With **Passive intake** on (a switch on the device page, or Configure, Settings)
 - The Diagram shows **Intake (passive)** with a dashed arrow.
 - The Phase sensor stays `intake` during a passive intake; its `passive` attribute is `true`.
 
+## Phase limit
+
+To keep one phase always shorter than the other, set **Phase limit** (a selector on the device page, or Configure, Settings):
+
+| Phase limit | What happens |
+| --- | --- |
+| **Off** (default) | Each phase ends by its own rules |
+| **Limited intake** | An intake never lasts longer than **Phase limit share** (default 90 %) of the exhaust just before it. For example, to take in less air than you blow out, or to keep cold intakes short without a fixed limit. |
+| **Limited exhaust** | An exhaust never lasts longer than *Phase limit share* of the intake just before it |
+
+It works in Automatic and Timed breathing, and ends the phase with the reason **Phase limit**. It only ever makes the limited phase shorter: the phase can still end sooner by the usual rules. Some things still win over it:
+- **Minimum phase**: a limited phase always runs at least that long (it protects the fans and relays), so after an exhaust of exactly *Minimum phase* the intake is as long, not shorter.
+- In cold weather, the exhaust still runs at least as long as the last intake (see *Cold exhaust extra*), so **Limited exhaust** does not apply then: that rule keeps the core from freezing.
+- Passive intakes are not limited, and an exhaust after a passive intake is not limited either.
+- The very first phase after switching on has nothing to compare with, so it is not limited.
+
 ## Winter
 
 A basement can be cold in winter (say 7 °C with −25 °C outside), and it should still breathe. So the room is protected **relative to its own temperature**, not by a fixed number:
@@ -242,6 +262,8 @@ Measured on the first installation (three ceramic cores in a row, small duct fan
 - With *Maximum supply drop* 3 °C, intakes end after about 6–7 minutes; exhausts behave the same way in reverse. A full breath takes about 12–15 minutes.
 
 ## Upgrading
+
+**0.5.0:** new **Phase limit** setting (off by default): keep the intake, or the exhaust, shorter than the other phase. See [Phase limit](#phase-limit).
 
 **0.4.0:** the diagram and replay show the probe readings in the pipe's ends instead of under it. The replay gains a history graph of the two probes with a cursor sweeping across in step. A new [Replay card](#replay-card) picks the period with the History page's date picker; the Create replay action takes an optional **start** for it. Refresh the browser once after updating so the card's script loads.
 

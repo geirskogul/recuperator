@@ -29,6 +29,7 @@ CONF_INSIDE_SENSOR = "inside_sensor"  # probe at the basement end of the core
 CONF_OUTSIDE_SENSOR = "outside_sensor"  # probe at the outdoor end of the core
 CONF_PASSIVE_INTAKE = "passive_intake"  # intake with the intake fan off (passive re-ventilation)
 CONF_PALETTE = "diagram_palette"  # the diagram's colour scale, as text (see diagram.py)
+CONF_PHASE_LIMIT = "phase_limit"  # keep one phase shorter than the other (see PHASE_LIMITS)
 
 # Every entity a recuperator is wired to (kept up to date when one is renamed).
 WIRING_KEYS = (
@@ -54,6 +55,13 @@ MODE_EXHAUST_ONLY = "exhaust_only"
 MODE_INTAKE_ONLY = "intake_only"
 MODES = [MODE_AUTOMATIC, MODE_TIMED, MODE_EXHAUST_ONLY, MODE_INTAKE_ONLY]
 
+# -- phase limit: one phase kept shorter than the other --------------------------
+
+LIMIT_OFF = "off"
+LIMIT_INTAKE = "limited_intake"  # intake at most Phase limit share of the last exhaust
+LIMIT_EXHAUST = "limited_exhaust"  # exhaust at most Phase limit share of the last intake
+PHASE_LIMITS = [LIMIT_OFF, LIMIT_INTAKE, LIMIT_EXHAUST]
+
 # -- phases (the state of the "Phase" sensor) ----------------------------------
 
 PHASE_STOPPED = "stopped"
@@ -71,6 +79,7 @@ REASON_COLD_LIMIT = "cold_limit"  # a cold-weather limit ended the phase
 REASON_TIMED = "timed"  # timed breathing: the fixed phase length ran out
 REASON_SUPPLY_DROP = "supply_drop"  # air entering the room fell too far below room temperature
 REASON_SUPPLY_COLD = "supply_cold"  # air entering the room got colder than the hard floor
+REASON_PHASE_LIMIT = "phase_limit"  # the phase limit kept it shorter than the other phase
 REASON_STARTED = "started"  # breathing was switched on
 REASON_STOPPED = "stopped"  # breathing was switched off
 REASONS = [
@@ -81,6 +90,7 @@ REASONS = [
     REASON_TIMED,
     REASON_SUPPLY_DROP,
     REASON_SUPPLY_COLD,
+    REASON_PHASE_LIMIT,
     REASON_STARTED,
     REASON_STOPPED,
 ]
@@ -142,6 +152,7 @@ SETTINGS: tuple[Setting, ...] = (
     ),
     Setting("passive_intake_max_seconds", 1800, 60, 86400, 60, "s", "mdi:timer-sand-complete"),
     Setting("passive_flow_delta", 0.3, 0.05, 5, 0.05, C, "mdi:weather-windy", advanced=True),
+    Setting("phase_limit_percent", 90, 10, 100, 1, "%", "mdi:scale-unbalanced"),
     # Replay: used by the Create replay button, and saved from the last Create replay action.
     Setting("replay_hours", 24, 0.25, 168, 0.25, "h", "mdi:history"),
     Setting("replay_playback_seconds", 60, 5, 900, 1, "s", "mdi:play-speed"),
