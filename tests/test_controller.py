@@ -79,16 +79,17 @@ async def test_linked_intake_fan_runs_during_exhaust_only(hass: HomeAssistant, f
 
 
 async def test_interlock_waits_for_the_other_fan(hass: HomeAssistant, fans, probes, freezer) -> None:
-    """If the exhaust fan will not switch off, the intake fan never starts."""
-    await start_timed(hass, freezer)
-    await tick(hass, freezer, 7)  # near the end of the 10 s exhaust
-    stuck = hass.states.get(EXHAUST)
-    # From now on the exhaust fan keeps reporting on, whatever it is told.
-    for _ in range(8):
-        hass.states.async_set(EXHAUST, "on", stuck.attributes)
-        await tick(hass, freezer, 1)
-        assert hass.states.get(INTAKE).state == "off"
+    """A fan that ignores turn_off (a stuck relay) keeps the other fan from starting."""
+    stuck = "switch.stuck_exhaust"
+    hass.states.async_set(stuck, "on")  # nothing behind it: commands to it do nothing
+    await start_timed(hass, freezer, {"exhaust_switch": stuck})
+    await tick(hass, freezer, 15)  # the 10 s exhaust is over; intake is due
     assert hass.states.get("sensor.breather_phase").state == "intake"
+    assert hass.states.get(INTAKE).state == "off"
+
+    hass.states.async_set(stuck, "off")  # the relay finally lets go
+    await tick(hass, freezer, 1)
+    assert hass.states.get(INTAKE).state == "on"
 
 
 async def test_fahrenheit_probes_are_converted(hass: HomeAssistant, fans) -> None:
