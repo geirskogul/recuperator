@@ -43,3 +43,19 @@ jobs:
                   text = text[-3000:].replace("%", "%25").replace("\r", "").replace("\n", "%0A")
                   print(f"::error title={name}::{text}")
           EOF
+
+      - name: Report coverage
+        if: success()
+        run: |
+          python - <<'EOF'
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse("coverage.xml").getroot()
+          total = float(root.get("line-rate")) * 100
+          files = sorted(
+              (float(c.get("line-rate")) * 100, c.get("filename"))
+              for c in root.iter("class")
+          )
+          lowest = ", ".join(f"{name.rsplit('/', 1)[-1]} {rate:.0f}%" for rate, name in files[:5])
+          print(f"::notice title=Coverage {total:.0f}%::Lowest: {lowest}")
+          EOF
