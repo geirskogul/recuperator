@@ -26,10 +26,21 @@ from .const import (
     CONF_EXHAUST_SWITCH,
     CONF_INSIDE_SENSOR,
     CONF_INTAKE_SWITCH,
+    CONF_LINK_EXHAUST_SWITCH,
+    CONF_LINK_INTAKE_SWITCH,
+    CONF_LINK_TYPE,
     CONF_OUTSIDE_SENSOR,
     CONF_PALETTE,
     CONF_PASSIVE_INTAKE,
     DEFAULTS,
+    LINK_EXHAUST_FAN,
+    LINK_INTAKE_FAN,
+    LINK_NONE,
+    LINK_RECUPERATOR,
+    LINKED_EXHAUST,
+    LINKED_IDLE,
+    LINKED_INTAKE,
+    LINKED_NOT_LINKED,
     MODE_AUTOMATIC,
     PHASE_EXHAUST,
     PHASE_INTAKE,
@@ -56,6 +67,10 @@ class RecuperatorController:
         self.intake_switch: str = entry.data[CONF_INTAKE_SWITCH]
         self.inside_sensor: str = entry.data[CONF_INSIDE_SENSOR]
         self.outside_sensor: str = entry.data[CONF_OUTSIDE_SENSOR]
+        # A linked unit breathes opposite to this one: its intake runs while this
+        # one exhausts, its exhaust while this one takes air in.
+        self.link_type: str = entry.data.get(CONF_LINK_TYPE, LINK_NONE)
+        self.link_exhaust_switch, self.link_intake_switch = linked_fans(entry.data)
         self.logic = BreathingLogic()
         self.enabled = False
         self.mode = MODE_AUTOMATIC
@@ -269,12 +284,37 @@ class RecuperatorController:
     # -- driving the fans -------------------------------------------------------------
 
     def _wanted(self) -> dict[str, bool]:
-        phase = self.logic.phase
-        return {
-            self.exhaust_switch: self.enabled and phase == PHASE_EXHAUST,
+        """Which fans should be on now (every fan this recuperator drives)."""
+        phase = self.logic.phase if self.enabled else None
+        wanted = {
+            self.exhaust_switch: phase == PHASE_EXHAUST,
             # Passive intake: the intake fan stays off; air refills on its own.
-            self.intake_switch: self.enabled and phase == PHASE_INTAKE and not self.logic.passive,
+            self.intake_switch: phase == PHASE_INTAKE and not self.logic.passive,
         }
+        # The linked unit moves air the other way, so the house stays balanced.
+        # During a passive intake its exhaust is what draws air in through this core.
+        if self.link_intake_switch:
+            wanted[self.link_intake_switch] = phase == PHASE_EXHAUST
+        if self.link_exhaust_switch:
+            wanted[self.link_exhaust_switch] = phase == PHASE_INTAKE
+        return wanted
+
+    def _partner(self, entity_id: str) -> str | None:
+        """The other fan of the same unit: the two must never run together."""
+        pairs = [(self.exhaust_switch, self.intake_switch)]
+        if self.link_exhaust_switch and self.link_intake_switch:
+            pairs.append((self.link_exhaust_switch, self.link_intake_switch))
+        for a, b in pairs:
+            if entity_id == a:
+                return b
+            if entity_id == b:
+                return a
+        return None
+
+    def _fans(self) -> list[str]:
+        """Every fan this recuperator switches, the linked unit's included."""
+        linked = [f for f in (self.link_exhaust_switch, self.link_intake_switch) if f]
+        return [self.exhaust_switch, self.intake_switch, *linked]
 
     def _is_on(self, entity_id: str) -> bool | None:
         state = self.hass.states.get(entity_id)
@@ -285,8 +325,9 @@ class RecuperatorController:
     async def _async_apply(self) -> None:
         """Make the fans match the phase. Always switch off before switching on.
 
-        A fan is only switched on once the other one reports off, so both are
-        never on together, even if a switch is slow or was flipped by hand.
+        A fan is only switched on once the other fan of its unit reports off, so
+        a unit's two fans are never on together, even if a switch is slow or was
+        flipped by hand.
         """
         if self._hands_off:
             return
@@ -295,13 +336,16 @@ class RecuperatorController:
             if not on and self._is_on(entity_id) is not False:
                 await self._async_command(entity_id, False)
         for entity_id, on in wanted.items():
-            if not on:
-                continue
-            other = self.intake_switch if entity_id == self.exhaust_switch else self.exhaust_switch
-            if self._is_on(other):
-                continue  # interlock: wait for the other fan to report off
-            if self._is_on(entity_id) is not True:
-                await self._async_command(entity_id, True)
+            if on:
+                await self._async_switch_on(entity_id)
+
+    async def _async_switch_on(self, entity_id: str) -> None:
+        """Switch one fan on, unless its partner still reports on (interlock)."""
+        partner = self._partner(entity_id)
+        if partner is not None and self._is_on(partner):
+            return  # wait for the other fan to report off
+        if self._is_on(entity_id) is not True:
+            await self._async_command(entity_id, True)
 
     async def _async_command(self, entity_id: str, on: bool) -> None:
         """Send turn_on/turn_off, but not more than once per RESEND_SECONDS."""
@@ -319,7 +363,8 @@ class RecuperatorController:
         )
 
     async def _async_both_off(self) -> None:
-        for entity_id in (self.exhaust_switch, self.intake_switch):
+        """Every fan off (the linked unit's too)."""
+        for entity_id in self._fans():
             if self._is_on(entity_id) is not False:
                 self._last_command.pop(entity_id, None)
                 await self._async_command(entity_id, False)
@@ -336,4 +381,25 @@ class RecuperatorController:
             "cold_weather": self.logic.cold,
             "mode": self.mode,
             "passive": self.logic.phase == PHASE_INTAKE and self.logic.passive,
+            "linked_unit": self.link_type,
+            "linked_phase": self.linked_state(),
         }
+
+    def linked_state(self) -> str:
+        """What the linked unit is doing: exhaust, intake, idle or not linked."""
+        if self.link_type == LINK_NONE:
+            return LINKED_NOT_LINKED
+        wanted = self._wanted()
+        if self.link_intake_switch and wanted.get(self.link_intake_switch):
+            return LINKED_INTAKE
+        if self.link_exhaust_switch and wanted.get(self.link_exhaust_switch):
+            return LINKED_EXHAUST
+        return LINKED_IDLE
+
+
+def linked_fans(data) -> tuple[str | None, str | None]:
+    """(exhaust fan, intake fan) of the linked unit, as its type uses them."""
+    link_type = data.get(CONF_LINK_TYPE, LINK_NONE)
+    exhaust = data.get(CONF_LINK_EXHAUST_SWITCH) if link_type in (LINK_RECUPERATOR, LINK_EXHAUST_FAN) else None
+    intake = data.get(CONF_LINK_INTAKE_SWITCH) if link_type in (LINK_RECUPERATOR, LINK_INTAKE_FAN) else None
+    return exhaust or None, intake or None

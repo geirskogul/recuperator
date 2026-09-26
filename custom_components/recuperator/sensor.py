@@ -15,7 +15,7 @@ from homeassistant.const import PERCENTAGE, UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import PHASES, REASONS
+from .const import LINKED_STATES, PHASES, REASONS
 from .entity import RecuperatorEntity
 from .logic import BreathingLogic
 
@@ -47,10 +47,12 @@ RESTORED = {"basement_temperature": "basement_estimate", "outdoor_temperature": 
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
-    async_add_entities(
+    sensors: list[SensorEntity] = [
         (LearnedTemperatureSensor if r.key in RESTORED else ReadoutSensor)(entry.runtime_data, entry, r)
         for r in READOUTS
-    )
+    ]
+    sensors.append(LinkedUnitSensor(entry.runtime_data, entry, "linked_unit"))
+    async_add_entities(sensors)
 
 
 class ReadoutSensor(RecuperatorEntity, SensorEntity):
@@ -96,3 +98,24 @@ class LearnedTemperatureSensor(ReadoutSensor, RestoreSensor):
                 setattr(self._controller.logic, attr, float(last.native_value))
             except (TypeError, ValueError):
                 pass
+
+
+class LinkedUnitSensor(RecuperatorEntity, SensorEntity):
+    """What the linked unit is doing: intake, exhaust, idle, or not linked."""
+
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = LINKED_STATES
+    _attr_icon = "mdi:link-variant"
+
+    @property
+    def native_value(self) -> str:
+        return self._controller.linked_state()
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        c = self._controller
+        return {
+            "linked_unit": c.link_type,
+            "exhaust_fan": c.link_exhaust_switch,
+            "intake_fan": c.link_intake_switch,
+        }

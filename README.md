@@ -23,6 +23,7 @@ The cycle runs inside the integration, not in automations, so there are no autom
 - [Entities](#entities)
 - [Modes](#modes)
 - [Settings](#settings)
+- [Linked unit](#linked-unit)
 - [Resetting to defaults](#resetting-to-defaults)
 - [Tuning guide](#tuning-guide)
 - [Safety behaviour](#safety-behaviour)
@@ -90,7 +91,7 @@ A running phase ends at the first of:
 
 ...but never before **Minimum phase**. Then both fans are off for **Pause**, and the other phase starts.
 
-**Timed phases** (a fixed *Timed phase* length) are used instead when:
+**Timed phases** (fixed lengths: *Timed exhaust* for exhaust, *Timed intake* for intake) are used instead when:
 - Mode is **Timed**;
 - indoor and outdoor air are less than **Similar temperatures** apart (mild weather, or the core disconnected); there is nothing to recover, but the room still breathes;
 - a probe is unavailable (the phase finishes on time; the next phase uses the probes again if the probe is back).
@@ -117,8 +118,7 @@ For a recuperator named *Basement Breather*:
 | `sensor.basement_breather_outdoor_temperature` | Outdoor air temperature: the outside probe at the end of the last intake |
 | `sensor.basement_breather_heat_recovery` | How much of the gap the core closed in the last temperature-driven phase (%) |
 | `image.basement_breather_diagram` | A live picture of the pipe, filled with the temperature gradient (see [Diagram](#diagram)) |
-| `image.basement_breather_diagram_replay` | The last animated replay made with **Create replay** (see [Replay](#replay-watch-it-breathe)) |
-| `button.basement_breather_create_replay` | Makes a new replay with the saved replay settings |
+| `sensor.basement_breather_linked_unit` | What the linked unit is doing: Intake, Exhaust, Idle or Not linked (see [Linked unit](#linked-unit)) |
 | `text.basement_breather_diagram_colours` | The diagram's colour scale, editable (see [Diagram colours](#diagram-colours)) |
 | `switch.basement_breather_passive_intake` | **Passive intake** on/off (see [Passive intake](#passive-intake)) |
 | `binary_sensor.basement_breather_passive_inflow` | On if air was seen flowing in during the running or last passive intake |
@@ -128,6 +128,8 @@ For a recuperator named *Basement Breather*:
 | `number.basement_breather_...` | One per setting (below), under the device's **Configuration** section |
 | `button.basement_breather_reset_settings_to_defaults` | Puts every setting back to its default |
 
+The replay has a device of its own, **Basement Breather Replay**, listed on the recuperator's device page under *Connected devices*. It holds the replay animation, the **Create** button and the three replay settings (see [Replay](#replay-watch-it-breathe)).
+
 Breathing and Mode survive a Home Assistant restart, and so do the learned basement and outdoor temperatures. After a restart the cycle waits up to 60 s for both probes to report, then starts again with exhaust.
 
 ## Modes
@@ -135,7 +137,7 @@ Breathing and Mode survive a Home Assistant restart, and so do the learned basem
 | Mode | What happens |
 | --- | --- |
 | **Automatic** | The probe-driven cycle described above (normal use) |
-| **Timed** | Fixed-length phases (*Timed phase*), ignoring the probes except for the cold intake limit. Good for checking the wiring, or if the probes are unreliable. |
+| **Timed** | Fixed-length phases (*Timed exhaust* and *Timed intake*, set separately), ignoring the probes except for the cold intake limit. Good for checking the wiring, or if the probes are unreliable. |
 | **Exhaust only** | The exhaust fan runs continuously (for example to dry the room out quickly, or to test airflow) |
 | **Intake only** | The intake fan runs continuously |
 
@@ -143,7 +145,7 @@ Changing mode takes effect within a second; a running fan is stopped and the pau
 
 ## Settings
 
-All settings take effect within a second, without restarting the cycle. Change them either on the device page (the **Configuration** section, one number per setting, handy on a dashboard), or all together with **Configure**, then **Settings** (the replay settings are under **Configure**, **Replay**).
+All settings take effect within a second, without restarting the cycle. Change them either on the device page (the **Configuration** section, one number per setting, handy on a dashboard), or all together with **Configure**, then **Settings**. The replay has its own settings, in their own place: see [Replay settings](#replay-settings). A linked second unit is set up under **Configure**, **Linked unit** (see [Linked unit](#linked-unit)).
 
 | Setting | Default | Range | What it does |
 | --- | --- | --- | --- |
@@ -153,7 +155,8 @@ All settings take effect within a second, without restarting the cycle. Change t
 | Minimum phase | 20 s | 5–3600 | No phase ends sooner (protects the fans and relays from rapid switching) |
 | Maximum phase | 120 s | 10–86400 (24 h) | No exhaust or powered intake phase lasts longer. If set below Minimum phase, Minimum phase wins. |
 | Pause | 1 s | 0–30 | Both fans off between phases |
-| Timed phase | 60 s | 10–86400 | Phase length in Timed mode, in mild weather, and while a probe is unavailable |
+| Timed exhaust | 60 s | 10–86400 | Exhaust length in Timed mode, in mild weather, and while a probe is unavailable |
+| Timed intake | 60 s | 10–86400 | Intake length in the same cases. The cold intake limit still applies; a passive intake uses *Passive intake maximum* |
 | Similar temperatures | 2.0 °C | 0–20 | Indoor and outdoor air closer than this: timed phases instead of probe-driven ones. 0 turns this off. |
 | Cold threshold | −5 °C | −40–15 | Outdoor temperature at or below which the cold-weather limits apply |
 | Cold intake limit | 300 s | 10–86400 | In cold weather, intake never runs longer than this. Leave enough time for fresh air to get through the ducting (see [Winter](#winter)) |
@@ -162,11 +165,28 @@ All settings take effect within a second, without restarting the cycle. Change t
 | Passive intake | off | on/off | Intake phases run with the intake fan **off** (see [Passive intake](#passive-intake)) |
 | Passive intake maximum | 1800 s (30 min) | 60–86400 | The longest a passive intake may last |
 | Passive inflow change | 0.3 °C | 0.05–5 | How far the inside probe must move towards the outdoor temperature during a passive intake to count as air flowing in |
-| Replay hours | 24 h | 0.25–168 | How much history the Create replay button replays (saved from the last action call) |
-| Replay playback length | 60 s | 5–900 | Length of one replay loop |
-| Replay frames | 0 (auto) | 0–1440 | Frames per replay (0 = one per minute of history) |
 | Diagram colours | weather-service scale | text | The diagram's colour stops (see [Diagram colours](#diagram-colours)) |
 | Minimum supply temperature | −30 °C (off) | −30–25 | Optional hard floor: the intake also ends if the air entering the room drops below this. Only set it if there is a temperature the room must never see (for example water pipes). |
+
+## Linked unit
+
+A second unit can breathe together with the recuperator, moving air **the opposite way** so the house stays balanced (no over- or under-pressure): while this recuperator exhausts, the linked unit takes air in; while this one takes air in, the linked unit exhausts. The linked unit follows this recuperator's phases, pauses and mode, and is off whenever this one pauses or stops.
+
+Set it up with **Configure**, **Linked unit**, and pick what the linked unit is:
+
+| Linked unit | Fans to pick | What it does |
+| --- | --- | --- |
+| **None** | – | No linked unit (the default) |
+| **Full recuperator** | its exhaust fan and its intake fan | A second biphasic unit: its intake runs during this one's exhaust, its exhaust during this one's intake |
+| **Intake fan only** | its intake fan | Runs while this recuperator exhausts (make-up air) |
+| **Exhaust fan only** | its exhaust fan | Runs while this recuperator takes air in. With *Passive intake* on, this is what draws the air in through the core |
+
+- In **Exhaust only** / **Intake only** mode, the linked unit runs continuously the other way (for example Exhaust only: a linked intake fan runs all the time).
+- A full linked recuperator's two fans are interlocked like the main ones: one only starts after the other reports off.
+- Its fans must not be this recuperator's own fans, and not fans another recuperator already drives. If the second unit was added as a recuperator of its own, remove that one first so only one of them switches the fans.
+- Breathing off switches the linked fans off as well, then leaves them alone.
+- The **Linked unit** sensor shows what it is doing: Intake, Exhaust, Idle, or Not linked. The Phase sensor has `linked_unit` and `linked_phase` attributes.
+- Saving the Linked unit page restarts the recuperator (Breathing and Mode are kept).
 
 ## Choosing the recovery target
 
@@ -207,12 +227,15 @@ Measured on the first installation (three ceramic cores in a row, small duct fan
 
 ## Upgrading
 
+**0.2.0:** *Timed phase* is split into **Timed exhaust** and **Timed intake**; both start at your old Timed phase value, and the old Timed phase entity is removed. The replay's entities move to their own Replay device (their entity IDs stay the same).
+
 Settings you already have keep their stored values when a new version changes a default. After upgrading to 0.1.3, check **Cold intake limit** (the old default 45 s is too short for most duct runs; the new default is 300 s) and **Minimum supply temperature** (now off by default, −30 °C). Or press **Reset settings to defaults**, which resets all settings.
 
 ## Resetting to defaults
 
 - **Reset settings to defaults** (button on the device page) resets all settings **and** the diagram colours.
 - **Configure**, **Settings**, tick **Reset settings to defaults**: resets the cycle settings only; the colours and replay settings are kept.
+- Neither touches the [Linked unit](#linked-unit).
 - **Configure**, **Diagram colours**, tick **Reset colours to defaults**: resets the colours only.
 
 The chosen fans and probes, Breathing and Mode are always kept.
@@ -236,7 +259,7 @@ The **Last change reason**, **Last exhaust**, **Last intake** and **Heat recover
 
 ## Safety behaviour
 
-- **The two fans are never on together.** A fan is only switched on after the other one reports *off*. If a switch does not turn off (a stuck relay, a lost network connection), the cycle waits rather than start the other fan.
+- **The two fans are never on together** (nor the two fans of a linked full recuperator). A fan is only switched on after the other one reports *off*. If a switch does not turn off (a stuck relay, a lost network connection), the cycle waits rather than start the other fan.
 - **Always switch off before switching on**, with the *Pause* in between.
 - Commands are re-sent at most every 5 seconds if a switch does not follow, and not at all while a switch is unavailable.
 - **Breathing off** switches both fans off once and then leaves them alone. **Removing or disabling the integration** also switches both fans off.
@@ -275,7 +298,7 @@ show_state: false
 
 ## Replay: watch it breathe
 
-The action **Recuperator: Create replay** turns recorded history into an **animated diagram**. The gradient shifts through each breath, the Exhaust/Intake label and arrow switch with each phase, and a marker moves along a timeline showing the time of day. It loops, and needs nothing but a browser.
+The action **Recuperator: Create replay** turns recorded history into an **animated diagram**. The gradient shifts through each breath, the inside and outside **temperatures** are shown under the two ends of the pipe as they were at each moment, the Exhaust/Intake label and arrow switch with each phase, and a marker moves along a timeline with the time of day under it. It loops, and needs nothing but a browser.
 
 Run it from Developer tools, Actions, or from an automation or script:
 
@@ -288,7 +311,21 @@ data:
   # frames: 0            # 0 = one per minute of history (60 to 1440)
 ```
 
-**Create replay button:** the device also has a **Create replay** button, which makes a new replay with the **saved replay settings**: *Replay hours*, *Replay playback length* and *Replay frames*. These are the last values given to the action (a call without values uses them as well), and you can also change them as numbers on the device page or in **Configure, Replay**.
+### Replay settings
+
+Everything about the replay lives on its own **Replay** device (*Basement Breather Replay*, under *Connected devices* on the recuperator's device page), apart from the cycle's settings:
+
+| Entity | What it is |
+| --- | --- |
+| **Animation** (image) | The last replay |
+| **Create** (button) | Makes a new replay with the settings below |
+| **Hours** | How much history to replay (0.25–168 h, default 24) |
+| **Playback length** | Length of one loop (5–900 s, default 60) |
+| **Frames** | Frames per replay (0–1440; 0, the default, = one per minute of history) |
+
+The same three settings are on their own page under **Configure**, **Replay**. Values given to the action are saved into them too (a call without values uses them).
+
+Entity IDs: a recuperator added before 0.2.0 keeps its old IDs (`image.basement_breather_diagram_replay`, `button.basement_breather_create_replay`, `number.basement_breather_replay_hours`, ...). One added from 0.2.0 on gets IDs from the Replay device's name (`image.basement_breather_replay_animation`, `button.basement_breather_replay_create`, ...). The examples below use the older IDs; check yours on the Replay device.
 
 A dashboard with the replay and a button under it to make a fresh one at will (the image refreshes by itself when the new replay is ready):
 
@@ -309,7 +346,7 @@ cards:
 (For a button entity, `toggle` presses it.)
 
 The result:
-- appears in the **Diagram replay** image entity. Show it with a Picture Entity card, like the live diagram:
+- appears in the replay's **Animation** image entity. Show it with a Picture Entity card, like the live diagram:
   ```yaml
   type: picture-entity
   entity: image.basement_breather_diagram_replay

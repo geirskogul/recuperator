@@ -7,12 +7,15 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .entity import RecuperatorEntity
+from .entity import REPLAY_DEVICE, RecuperatorEntity
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
     c = entry.runtime_data
-    async_add_entities([ResetButton(c, entry, "reset_settings"), CreateReplayButton(c, entry, "create_replay")])
+    async_add_entities([
+        ResetButton(c, entry, "reset_settings"),
+        CreateReplayButton(c, entry, "create_replay", REPLAY_DEVICE),
+    ])
 
 
 class ResetButton(RecuperatorEntity, ButtonEntity):

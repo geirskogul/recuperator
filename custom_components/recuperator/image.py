@@ -12,7 +12,7 @@ from homeassistant.util import dt as dt_util
 
 from .diagram import render_svg
 from .replay import PLACEHOLDER
-from .entity import RecuperatorEntity
+from .entity import REPLAY_DEVICE, RecuperatorEntity
 
 MIN_REDRAW = timedelta(seconds=10)  # probe changes redraw at most this often
 
@@ -82,7 +82,7 @@ class RecuperatorReplay(RecuperatorEntity, ImageEntity):
     _attr_icon = "mdi:play-box-outline"
 
     def __init__(self, hass: HomeAssistant, controller, entry) -> None:
-        RecuperatorEntity.__init__(self, controller, entry, "replay")
+        RecuperatorEntity.__init__(self, controller, entry, "replay", REPLAY_DEVICE)
         ImageEntity.__init__(self, hass)
         self._attr_image_last_updated = controller.replay_time or dt_util.utcnow()
 
