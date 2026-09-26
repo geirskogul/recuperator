@@ -243,6 +243,8 @@ Measured on the first installation (three ceramic cores in a row, small duct fan
 
 ## Upgrading
 
+**0.4.0:** the diagram and replay show the probe readings in the pipe's ends instead of under it. The replay gains a history graph of the two probes with a cursor sweeping across in step. A new [Replay card](#replay-card) picks the period with the History page's date picker; the Create replay action takes an optional **start** for it. Refresh the browser once after updating so the card's script loads.
+
 **0.3.0:** probes reporting in °F are now converted (before, their numbers were taken as °C). Last change reason, Last exhaust, Last intake, Passive inflow and Passive inflow delay move to the device page's Diagnostic section. The Create replay action needs the recuperator chosen when there is more than one. The Linked unit sensor only exists while a unit is linked. The last replay is shown again after a restart.
 
 **0.2.0:** *Timed phase* is split into **Timed exhaust** and **Timed intake**; both start at your old Timed phase value, and the old Timed phase entity is removed. The replay's entities move to their own Replay device (their entity IDs stay the same).
