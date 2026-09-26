@@ -72,7 +72,9 @@
           "max_supply_drop": "Maximum supply drop",
           "passive_intake": "Passive intake (intake fan off)",
           "passive_intake_max_seconds": "Passive intake maximum",
-          "passive_flow_delta": "Passive inflow change"
+          "passive_flow_delta": "Passive inflow change",
+          "phase_limit": "Phase limit",
+          "phase_limit_percent": "Phase limit share"
         },
         "data_description": {
           "recovery_percent": "End a phase once the far probe has closed this much of the gap. Low (10-25%): switch as soon as the far end of the core starts to change, best heat recovery, shorter phases. High (80%+): let the core fill up, longer phases, more heat lost at the end of each phase.",
@@ -92,7 +94,9 @@
           "max_supply_drop": "During intake the inside probe reads the air entering the room. Once the minimum phase has passed, the intake ends if that air is more than this much colder than the room (the basement temperature from the last exhaust). Works in any season: it follows the room, so a cold room still breathes.",
           "passive_intake": "Intake phases run with the intake fan off: after each exhaust, the room refills on its own through the core, for up to the passive intake maximum. The exhaust fan works as usual. Passive inflow shows whether air really came in.",
           "passive_intake_max_seconds": "With passive intake on, the longest an intake phase may last (it can end sooner by the usual rules: recovery target, settled, supply drop, cold limits).",
-          "passive_flow_delta": "During a passive intake, the inside probe moving this much towards the outdoor temperature counts as air flowing in."
+          "passive_flow_delta": "During a passive intake, the inside probe moving this much towards the outdoor temperature counts as air flowing in.",
+          "phase_limit": "Keep one phase shorter than the other. Limited intake: an intake never lasts longer than Phase limit share of the exhaust before it. Limited exhaust: the other way round. Minimum phase still applies, room protection can still end an intake sooner, and in cold weather the cold exhaust rule wins over a limited exhaust. Passive intakes are not limited.",
+          "phase_limit_percent": "With a phase limit on: how long the limited phase may run, as a share of the other phase's last length (100% = no longer than it)."
         }
       },
       "colours": {
@@ -202,6 +206,14 @@
           "exhaust_only": "Exhaust only",
           "intake_only": "Intake only"
         }
+      },
+      "phase_limit": {
+        "name": "Phase limit",
+        "state": {
+          "off": "Off",
+          "limited_intake": "Limited intake",
+          "limited_exhaust": "Limited exhaust"
+        }
       }
     },
     "button": {
@@ -280,6 +292,9 @@
       },
       "replay_frames": {
         "name": "Frames"
+      },
+      "phase_limit_percent": {
+        "name": "Phase limit share"
       }
     },
     "sensor": {
@@ -303,7 +318,8 @@
           "started": "Started",
           "stopped": "Stopped",
           "supply_cold": "Supply below floor",
-          "supply_drop": "Supply colder than room"
+          "supply_drop": "Supply colder than room",
+          "phase_limit": "Phase limit"
         }
       },
       "last_exhaust": {
@@ -387,6 +403,13 @@
         "recuperator": "Full recuperator (exhaust and intake fans)",
         "intake_fan": "Intake fan only",
         "exhaust_fan": "Exhaust fan only"
+      }
+    },
+    "phase_limit": {
+      "options": {
+        "off": "Off",
+        "limited_intake": "Limited intake",
+        "limited_exhaust": "Limited exhaust"
       }
     }
   },

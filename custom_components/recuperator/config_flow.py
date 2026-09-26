@@ -22,6 +22,7 @@ from .const import (
     CONF_OUTSIDE_SENSOR,
     CONF_PALETTE,
     CONF_PASSIVE_INTAKE,
+    CONF_PHASE_LIMIT,
     DEFAULTS,
     DOMAIN,
     LINK_EXHAUST_FAN,
@@ -29,6 +30,8 @@ from .const import (
     LINK_NONE,
     LINK_RECUPERATOR,
     LINK_TYPES,
+    LIMIT_OFF,
+    PHASE_LIMITS,
     REPLAY_KEYS,
     SETTINGS,
     unique_id_for,
@@ -183,6 +186,11 @@ class RecuperatorOptionsFlow(OptionsFlow):
             schema[vol.Required(s.key, default=current[s.key])] = selector.NumberSelector(cfg)
         schema[vol.Optional(CONF_PASSIVE_INTAKE, default=bool(current.get(CONF_PASSIVE_INTAKE, False)))] = (
             selector.BooleanSelector()
+        )
+        schema[vol.Optional(CONF_PHASE_LIMIT, default=current.get(CONF_PHASE_LIMIT, LIMIT_OFF))] = (
+            selector.SelectSelector(
+                selector.SelectSelectorConfig(options=PHASE_LIMITS, translation_key=CONF_PHASE_LIMIT)
+            )
         )
         schema[vol.Optional(CONF_RESET, default=False)] = selector.BooleanSelector()
         return self.async_show_form(step_id="settings", data_schema=vol.Schema(schema))
