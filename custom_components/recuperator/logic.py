@@ -120,6 +120,7 @@ class BreathingLogic:
         # Passive intake: the intake phase runs with the intake fan off.
         self.passive: bool = False  # the running (or last) intake is passive
         self.last_intake_passive: bool = False
+        self.last_intake_limited: bool = False  # the last intake was cut short by the phase limit
         self.passive_flow: bool | None = None  # inflow seen during the running/last passive intake
         self.passive_flow_after_seconds: float | None = None
         self._intake_inside_start: float | None = None
@@ -275,6 +276,7 @@ class BreathingLogic:
             else:
                 self.last_intake_seconds = duration
                 self.last_intake_passive = self.passive
+                self.last_intake_limited = reason == REASON_PHASE_LIMIT
                 if outside is not None:
                     self.outdoor_estimate = outside
             ref, far = self._ref_far(self.phase, inside, outside)
@@ -362,10 +364,14 @@ class BreathingLogic:
             # In the cold, exhaust at least as long as the last intake (keeps the
             # core's outer end from freezing and the basement from cooling), but
             # no more than cold_exhaust_extra_seconds longer. This frost protection
-            # wins over a limited exhaust.
-            cold_cap = self.last_intake_seconds + s.cold_exhaust_extra_seconds
-            if cold_cap < cap:
-                cap, cap_reason = cold_cap, REASON_COLD_LIMIT
+            # wins over a limited exhaust. The "no longer" part is skipped after an
+            # intake the phase limit cut short: otherwise each exhaust would be held
+            # to a shortened intake, which is then shortened again, and the phases
+            # would shrink breath by breath.
+            if not self.last_intake_limited:
+                cold_cap = self.last_intake_seconds + s.cold_exhaust_extra_seconds
+                if cold_cap < cap:
+                    cap, cap_reason = cold_cap, REASON_COLD_LIMIT
             lower = min(max(lower, self.last_intake_seconds), cap)
         limit = None if cold_exhaust else self._phase_limit(s, passive)
         if limit is not None and limit < cap:

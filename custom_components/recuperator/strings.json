@@ -88,7 +88,7 @@
           "similar_band": "If the two probes differ by less than this when a phase starts, that phase is timed instead, using Timed exhaust or Timed intake (nothing to recover, e.g. mild weather or hose disconnected).",
           "cold_threshold": "At or below this outdoor temperature, the cold-weather limits apply.",
           "cold_intake_max_seconds": "In cold weather, intake never runs longer than this. Allow enough time for fresh air to get through the ducting (several minutes with long hoses or slow fans); Maximum supply drop protects the room.",
-          "cold_exhaust_extra_seconds": "In cold weather, exhaust runs at least as long as the last intake and at most this much longer.",
+          "cold_exhaust_extra_seconds": "In cold weather, exhaust runs at least as long as the last intake and at most this much longer (no upper limit after an intake the phase limit cut short).",
           "reset_to_defaults": "Ignore the values above and restore these settings to their defaults. The diagram colours and replay settings are kept.",
           "min_supply_temperature": "Optional hard floor: the intake also ends if the air entering the room drops below this temperature. -30 (the default) means off. Only set it if there is a temperature the room must never see, e.g. near water pipes.",
           "max_supply_drop": "During intake the inside probe reads the air entering the room. Once the minimum phase has passed, the intake ends if that air is more than this much colder than the room (the basement temperature from the last exhaust). Works in any season: it follows the room, so a cold room still breathes.",

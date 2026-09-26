@@ -193,3 +193,22 @@ def test_cold_exhaust_rule_wins_over_limited_exhaust() -> None:
     run(logic, "automatic", s, 1, 400, steady(20.0, -10.0))
     assert logic.cold
     assert logic.last_exhaust_seconds >= logic.last_intake_seconds
+
+
+def test_limited_intake_in_the_cold_does_not_shrink_the_phases() -> None:
+    """Limited intake with the cold exhaust rule: the exhaust is not held to the shortened intake.
+
+    Before 0.5.1 each exhaust was capped at the last intake + Cold exhaust extra, and each intake
+    at a share of the exhaust, so the phases shrank breath by breath towards extra / (1 - share).
+    """
+    s = Settings.from_mapping(
+        {"max_phase_seconds": 100, "min_phase_seconds": 10, "similar_band": 0, "cold_intake_max_seconds": 600,
+         "phase_limit": "limited_intake", "phase_limit_percent": 50}
+    )
+    logic = BreathingLogic()
+    logic.start(0, "automatic", s, 20.0, -10.0)
+    run(logic, "automatic", s, 1, 2000, steady(20.0, -10.0))  # about 13 breaths
+    assert logic.cold
+    assert logic.last_exhaust_seconds == 100  # still the full Maximum phase
+    assert logic.last_intake_seconds == 50
+    assert logic.last_intake_limited
