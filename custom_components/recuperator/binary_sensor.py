@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass, BinarySensorEntity
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -46,6 +47,7 @@ class PassiveInflow(RecuperatorEntity, BinarySensorEntity):
     alike to tell).
     """
 
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:weather-windy"
 
     @property

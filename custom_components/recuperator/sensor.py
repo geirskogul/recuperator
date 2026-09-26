@@ -11,11 +11,12 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, UnitOfTemperature, UnitOfTime
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTemperature, UnitOfTime
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import LINKED_STATES, PHASES, REASONS
+from .const import DOMAIN, LINK_NONE, LINKED_STATES, PHASES, REASONS
 from .entity import RecuperatorEntity
 from .logic import BreathingLogic
 
@@ -29,16 +30,17 @@ class Readout:
     options: list[str] | None = None
     icon: str | None = None
     decimals: int | None = None
+    diagnostic: bool = False  # detail for tuning: shown under Diagnostic on the device page
 
 
 READOUTS = (
     Readout("phase", lambda l: l.phase, SensorDeviceClass.ENUM, options=PHASES, icon="mdi:fan"),
-    Readout("last_reason", lambda l: l.last_reason, SensorDeviceClass.ENUM, options=REASONS, icon="mdi:information-outline"),
-    Readout("last_exhaust", lambda l: l.last_exhaust_seconds, SensorDeviceClass.DURATION, UnitOfTime.SECONDS, icon="mdi:arrow-up-bold-circle-outline", decimals=0),
-    Readout("last_intake", lambda l: l.last_intake_seconds, SensorDeviceClass.DURATION, UnitOfTime.SECONDS, icon="mdi:arrow-down-bold-circle-outline", decimals=0),
+    Readout("last_reason", lambda l: l.last_reason, SensorDeviceClass.ENUM, options=REASONS, icon="mdi:information-outline", diagnostic=True),
+    Readout("last_exhaust", lambda l: l.last_exhaust_seconds, SensorDeviceClass.DURATION, UnitOfTime.SECONDS, icon="mdi:arrow-up-bold-circle-outline", decimals=0, diagnostic=True),
+    Readout("last_intake", lambda l: l.last_intake_seconds, SensorDeviceClass.DURATION, UnitOfTime.SECONDS, icon="mdi:arrow-down-bold-circle-outline", decimals=0, diagnostic=True),
     Readout("outdoor_temperature", lambda l: l.outdoor_estimate, SensorDeviceClass.TEMPERATURE, UnitOfTemperature.CELSIUS, decimals=1),
     Readout("basement_temperature", lambda l: l.basement_estimate, SensorDeviceClass.TEMPERATURE, UnitOfTemperature.CELSIUS, decimals=1),
-    Readout("passive_inflow_delay", lambda l: l.passive_flow_after_seconds, SensorDeviceClass.DURATION, UnitOfTime.SECONDS, icon="mdi:timer-outline", decimals=0),
+    Readout("passive_inflow_delay", lambda l: l.passive_flow_after_seconds, SensorDeviceClass.DURATION, UnitOfTime.SECONDS, icon="mdi:timer-outline", decimals=0, diagnostic=True),
     Readout("recovery", lambda l: None if l.last_recovery_percent is None else round(l.last_recovery_percent, 1), None, PERCENTAGE, icon="mdi:heat-wave", decimals=0),
 )
 
@@ -51,8 +53,18 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddE
         (LearnedTemperatureSensor if r.key in RESTORED else ReadoutSensor)(entry.runtime_data, entry, r)
         for r in READOUTS
     ]
-    sensors.append(LinkedUnitSensor(entry.runtime_data, entry, "linked_unit"))
+    if entry.runtime_data.link_type != LINK_NONE:
+        sensors.append(LinkedUnitSensor(entry.runtime_data, entry, "linked_unit"))
+    else:
+        _remove_stale(hass, f"{entry.entry_id}_linked_unit")  # link removed since last time
     async_add_entities(sensors)
+
+
+def _remove_stale(hass: HomeAssistant, unique_id: str) -> None:
+    """Drop a sensor this recuperator no longer provides, rather than leave it unavailable."""
+    registry = er.async_get(hass)
+    if entity_id := registry.async_get_entity_id("sensor", DOMAIN, unique_id):
+        registry.async_remove(entity_id)
 
 
 class ReadoutSensor(RecuperatorEntity, SensorEntity):
@@ -65,6 +77,8 @@ class ReadoutSensor(RecuperatorEntity, SensorEntity):
         self._attr_suggested_display_precision = readout.decimals
         if readout.icon:
             self._attr_icon = readout.icon
+        if readout.diagnostic:
+            self._attr_entity_category = EntityCategory.DIAGNOSTIC
         if readout.device_class not in (SensorDeviceClass.ENUM, None) or readout.key == "recovery":
             self._attr_state_class = SensorStateClass.MEASUREMENT
 

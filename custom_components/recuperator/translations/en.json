@@ -355,7 +355,7 @@
       "fields": {
         "config_entry_id": {
           "name": "Recuperator",
-          "description": "Which recuperator (optional if there is only one)."
+          "description": "Which recuperator. Needed when there is more than one."
         },
         "hours": {
           "name": "Hours",
@@ -384,6 +384,23 @@
         "intake_fan": "Intake fan only",
         "exhaust_fan": "Exhaust fan only"
       }
+    }
+  },
+  "exceptions": {
+    "no_recuperator": {
+      "message": "No recuperator is set up and running."
+    },
+    "recuperator_not_found": {
+      "message": "That recuperator is not set up, or is not running."
+    },
+    "several_recuperators": {
+      "message": "There are several recuperators ({names}); choose which one to replay."
+    },
+    "recorder_needed": {
+      "message": "The replay needs Home Assistant's recorder (history)."
+    },
+    "invalid_palette": {
+      "message": "Diagram colours not changed: {error}"
     }
   }
 }
