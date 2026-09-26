@@ -2,6 +2,12 @@
 
 # Recuperator
 
+[![Release](https://img.shields.io/github/v/release/geirskogul/recuperator)](https://github.com/geirskogul/recuperator/releases)
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/docs/faq/custom_repositories/)
+[![Tests](https://github.com/geirskogul/recuperator/actions/workflows/tests.yml/badge.svg)](https://github.com/geirskogul/recuperator/actions/workflows/tests.yml)
+[![Validate](https://github.com/geirskogul/recuperator/actions/workflows/validate.yml/badge.svg)](https://github.com/geirskogul/recuperator/actions/workflows/validate.yml)
+[![License: MIT](https://img.shields.io/github/license/geirskogul/recuperator)](LICENSE)
+
 A Home Assistant integration that runs a **single-tube ceramic recuperator** (a small heat-recovery ventilator) as a continuous **breathing cycle**:
 
 1. **Exhaust**: one fan blows indoor air out through the ceramic core. The core soaks up the indoor air's heat (or coolness).
@@ -10,6 +16,9 @@ A Home Assistant integration that runs a **single-tube ceramic recuperator** (a 
 4. **Pause**, then exhaust again, and so on.
 
 Two temperature probes, one at each end of the core, tell the integration when each phase has done its job, so the cycle adapts to the weather: long, efficient phases when there is a big temperature difference, shorter capped phases in deep cold, and simple timed breathing when indoor and outdoor air are about the same temperature. The goal is to flush moisture out of a basement (or any room) while losing as little heat as possible.
+
+<p align="center"><img src="docs/replay-demo.svg" alt="Animated replay: the pipe's temperature gradient shifting as the recuperator exhausts and takes air in" width="640"></p>
+<p align="center"><sub>A replay of a simulated quarter-hour in winter, made with the integration's own <a href="#replay-watch-it-breathe">Create replay</a>.</sub></p>
 
 The cycle runs inside the integration, not in automations, so there are no automation traces every half minute. It has its own device with a Breathing switch, a Mode selector, read-outs, and every setting exposed for tuning.
 
@@ -39,11 +48,14 @@ The cycle runs inside the integration, not in automations, so there are no autom
 
   DS18B20 probes on an ESP32 with ESPHome work well. Read them every few seconds (for example `update_interval: 2s`), because a phase only lasts tens of seconds. An ESPHome `delta` filter (for example `delta: 0.1`) is fine; the integration treats "no new value" as "unchanged".
 
+- Probes may report in °C or °F (or K); readings are converted. Temperatures are shown in your Home Assistant units.
 - Home Assistant 2025.2 or newer.
 
 ## Installing
 
-Through HACS:
+[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=geirskogul&repository=recuperator&category=integration)
+
+The button above opens the repository in HACS on your own Home Assistant. Or by hand, through HACS:
 
 1. HACS, the three-dot menu, **Custom repositories**. Add `https://github.com/geirskogul/recuperator` with type **Integration**.
 2. Find **Recuperator** in HACS, **Download**.
@@ -52,6 +64,8 @@ Through HACS:
 To update later: HACS shows the new version; Update, then restart Home Assistant.
 
 ## Adding a recuperator
+
+[![Open your Home Assistant instance and start setting up a new Recuperator.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=recuperator)
 
 Settings, Devices & services, **Add integration**, **Recuperator**, then pick:
 
@@ -63,7 +77,7 @@ Settings, Devices & services, **Add integration**, **Recuperator**, then pick:
 | Inside probe | The sensor at the **indoor end** of the core |
 | Outside probe | The sensor at the **outdoor end** of the core |
 
-Everything else has sensible defaults and can be changed later. To point it at different fans or probes afterwards: the integration's three-dot menu, **Reconfigure** (settings are kept).
+Everything else has sensible defaults and can be changed later. To point it at different fans or probes afterwards: the integration's three-dot menu, **Reconfigure** (settings are kept). Renaming a fan's or probe's entity ID in Home Assistant is followed automatically.
 
 ## First run
 
@@ -118,7 +132,7 @@ For a recuperator named *Basement Breather*:
 | `sensor.basement_breather_outdoor_temperature` | Outdoor air temperature: the outside probe at the end of the last intake |
 | `sensor.basement_breather_heat_recovery` | How much of the gap the core closed in the last temperature-driven phase (%) |
 | `image.basement_breather_diagram` | A live picture of the pipe, filled with the temperature gradient (see [Diagram](#diagram)) |
-| `sensor.basement_breather_linked_unit` | What the linked unit is doing: Intake, Exhaust, Idle or Not linked (see [Linked unit](#linked-unit)) |
+| `sensor.basement_breather_linked_unit` | What the linked unit is doing: Intake, Exhaust or Idle. Only there while a unit is linked (see [Linked unit](#linked-unit)) |
 | `text.basement_breather_diagram_colours` | The diagram's colour scale, editable (see [Diagram colours](#diagram-colours)) |
 | `switch.basement_breather_passive_intake` | **Passive intake** on/off (see [Passive intake](#passive-intake)) |
 | `binary_sensor.basement_breather_passive_inflow` | On if air was seen flowing in during the running or last passive intake |
@@ -129,6 +143,8 @@ For a recuperator named *Basement Breather*:
 | `button.basement_breather_reset_settings_to_defaults` | Puts every setting back to its default |
 
 The replay has a device of its own, **Basement Breather Replay**, listed on the recuperator's device page under *Connected devices*. It holds the replay animation, the **Create** button and the three replay settings (see [Replay](#replay-watch-it-breathe)).
+
+On the device page, the detail for tuning (Last change reason, Last exhaust, Last intake, Passive inflow, Passive inflow delay) is under **Diagnostic**, and the settings under **Configuration**. On a recuperator added from 0.3.0 on, the less-used settings (Settle window, Settle change, Similar temperatures, Cold exhaust extra, Minimum supply temperature, Passive inflow change) and the Diagram colours text start disabled: they are always on the **Configure**, **Settings** page, or enable their entities if you want them on a dashboard.
 
 Breathing and Mode survive a Home Assistant restart, and so do the learned basement and outdoor temperatures. After a restart the cycle waits up to 60 s for both probes to report, then starts again with exhaust.
 
@@ -145,7 +161,7 @@ Changing mode takes effect within a second; a running fan is stopped and the pau
 
 ## Settings
 
-All settings take effect within a second, without restarting the cycle. Change them either on the device page (the **Configuration** section, one number per setting, handy on a dashboard), or all together with **Configure**, then **Settings**. The replay has its own settings, in their own place: see [Replay settings](#replay-settings). A linked second unit is set up under **Configure**, **Linked unit** (see [Linked unit](#linked-unit)).
+All settings take effect within a second, without restarting the cycle. Temperatures (Cold threshold, Minimum supply temperature) are shown in your Home Assistant units; temperature *differences* (Settle change, Similar temperatures, Maximum supply drop, Passive inflow change) are always in °C, where 1 °C is 1.8 °F. Change them either on the device page (the **Configuration** section, one number per setting, handy on a dashboard), or all together with **Configure**, then **Settings**. The replay has its own settings, in their own place: see [Replay settings](#replay-settings). A linked second unit is set up under **Configure**, **Linked unit** (see [Linked unit](#linked-unit)).
 
 | Setting | Default | Range | What it does |
 | --- | --- | --- | --- |
@@ -226,6 +242,8 @@ Measured on the first installation (three ceramic cores in a row, small duct fan
 - With *Maximum supply drop* 3 °C, intakes end after about 6–7 minutes; exhausts behave the same way in reverse. A full breath takes about 12–15 minutes.
 
 ## Upgrading
+
+**0.3.0:** probes reporting in °F are now converted (before, their numbers were taken as °C). Last change reason, Last exhaust, Last intake, Passive inflow and Passive inflow delay move to the device page's Diagnostic section. The Create replay action needs the recuperator chosen when there is more than one. The Linked unit sensor only exists while a unit is linked. The last replay is shown again after a restart.
 
 **0.2.0:** *Timed phase* is split into **Timed exhaust** and **Timed intake**; both start at your old Timed phase value, and the old Timed phase entity is removed. The replay's entities move to their own Replay device (their entity IDs stay the same).
 
@@ -309,6 +327,7 @@ data:
   playback_seconds: 60   # length of one loop
   # end: "2026-09-25 08:00:00"   # optional, default now
   # frames: 0            # 0 = one per minute of history (60 to 1440)
+  # config_entry_id: ...  # which recuperator; needed when there is more than one
 ```
 
 ### Replay settings
@@ -353,10 +372,10 @@ The result:
   show_name: false
   show_state: false
   ```
-- is saved as `/config/www/recuperator/<name>-replay.svg`, reachable at `http://<home-assistant>:8123/local/recuperator/<name>-replay.svg`. Open it in any browser, or share the file. Home Assistant only serves `/local/` if the `www` folder existed when it started, so if the link does not work the first time, restart Home Assistant once.
+- is saved as `/config/www/recuperator/<name>-replay.svg`, reachable at `http://<home-assistant>:8123/local/recuperator/<name>-replay.svg`. Open it in any browser, or share the file. Note that Home Assistant serves `/local/` without a login, so anyone who can reach your Home Assistant address can open it. Home Assistant only serves `/local/` if the `www` folder existed when it started, so if the link does not work the first time, restart Home Assistant once.
 - The action also returns the file's address, the period and the number of frames (Developer tools shows this as the response).
 
-It uses the recorder's history of the two probes and the Phase sensor, so it can only go back as far as the recorder keeps history (10 days by default). Each run replaces the previous replay.
+It uses the recorder's history of the two probes and the Phase sensor, so it can only go back as far as the recorder keeps history (10 days by default). Each run replaces the previous replay; the last one is shown again after a restart.
 
 A fresh replay of the last day, every morning:
 
@@ -397,6 +416,7 @@ Add a *history-graph* card with the two probes and `sensor.basement_breather_pha
 
 ## Troubleshooting
 
+- **Reporting a problem:** Settings, Devices & services, Recuperator, the three-dot menu, **Download diagnostics**, and attach the file to the [issue](https://github.com/geirskogul/recuperator/issues). It holds the settings, wiring, probe readings and units, fan states and where the cycle is.
 - **Nothing happens:** is **Breathing** on? Is the **Phase** sensor changing? Check the two fan switches work from Home Assistant by hand (with Breathing off).
 - **Always "Timed":** look at the Phase sensor's `timed` attribute: `temperatures_similar` (mild weather, or the core not connected), `sensor_unavailable` (a probe is offline) or `mode`.
 - **Stuck in one phase with the fan off:** the other fan's switch probably still reports *on* (interlock). Check that switch.
