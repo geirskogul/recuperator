@@ -36,6 +36,7 @@ from .const import (
     CONF_OUTSIDE_SENSOR,
     CONF_PALETTE,
     CONF_PASSIVE_INTAKE,
+    CONF_PHASE_LIMIT,
     DEFAULTS,
     LINK_EXHAUST_FAN,
     LINK_INTAKE_FAN,
@@ -45,9 +46,11 @@ from .const import (
     LINKED_IDLE,
     LINKED_INTAKE,
     LINKED_NOT_LINKED,
+    LIMIT_OFF,
     MODE_AUTOMATIC,
     PHASE_EXHAUST,
     PHASE_INTAKE,
+    PHASE_LIMITS,
     SETTINGS_BY_KEY,
     STARTUP_WAIT_SECONDS,
 )
@@ -133,6 +136,18 @@ class RecuperatorController:
         """Turn passive intake on or off (applies from the next intake phase)."""
         self.hass.config_entries.async_update_entry(
             self.entry, options={**self.entry.options, CONF_PASSIVE_INTAKE: bool(on)}
+        )
+
+    @property
+    def phase_limit(self) -> str:
+        """Which phase, if any, is kept shorter than the other (see logic.Settings)."""
+        value = self.entry.options.get(CONF_PHASE_LIMIT, LIMIT_OFF)
+        return value if value in PHASE_LIMITS else LIMIT_OFF
+
+    async def async_set_phase_limit(self, value: str) -> None:
+        """Choose the phase limit (applies from the running phase on)."""
+        self.hass.config_entries.async_update_entry(
+            self.entry, options={**self.entry.options, CONF_PHASE_LIMIT: value}
         )
 
     async def async_reset_settings(self) -> None:
