@@ -8,328 +8,136 @@
 [![Validate](https://github.com/geirskogul/recuperator/actions/workflows/validate.yml/badge.svg)](https://github.com/geirskogul/recuperator/actions/workflows/validate.yml)
 [![License: MIT](https://img.shields.io/github/license/geirskogul/recuperator)](LICENSE)
 
-A Home Assistant integration that runs a **single-tube ceramic recuperator** (a small heat-recovery ventilator) as a continuous **breathing cycle**:
+Let a damp basement breathe without throwing its heat away.
 
-1. **Exhaust**: one fan blows indoor air out through the ceramic core. The core soaks up the indoor air's heat (or coolness).
-2. **Pause**: both fans off for a moment.
-3. **Intake**: a second fan blows outdoor air in through the same core, which gives the stored heat back to the incoming air.
-4. **Pause**, then exhaust again, and so on.
+This Home Assistant integration runs a **single-tube ceramic recuperator**, a small heat-recovery ventilator, as a breathing cycle. One fan blows room air out through a ceramic core, and the core soaks up its warmth. Then a second fan pulls fresh air in through the same core, and the core hands that warmth back. Out, pause, in, pause, and again.
 
-Two temperature probes, one at each end of the core, tell the integration when each phase has done its job, so the cycle adapts to the weather: long, efficient phases when there is a big temperature difference, shorter capped phases in deep cold, and simple timed breathing when indoor and outdoor air are about the same temperature. The goal is to flush moisture out of a basement (or any room) while losing as little heat as possible.
+A temperature probe at each end of the core tells the integration when a breath has done its job. So the rhythm follows the weather on its own: long, efficient breaths when it's cold out, gentler ones in deep frost, and a simple timed rhythm when inside and outside are about the same.
 
-<p align="center"><img src="docs/replay-demo.svg" alt="Animated replay: the pipe's temperature gradient shifting as the recuperator exhausts and takes air in" width="640"></p>
-<p align="center"><sub>A replay of a simulated quarter-hour in winter, made with the integration's own <a href="#replay-watch-it-breathe">Create replay</a>.</sub></p>
-
-The cycle runs inside the integration, not in automations, so there are no automation traces every half minute. It has its own device with a Breathing switch, a Mode selector, read-outs, and every setting exposed for tuning.
-
-## Contents
-
-- [What you need](#what-you-need)
-- [Installing](#installing)
-- [Adding a recuperator](#adding-a-recuperator)
-- [First run](#first-run)
-- [How the cycle decides when to switch](#how-the-cycle-decides-when-to-switch)
-- [Entities](#entities)
-- [Modes](#modes)
-- [Settings](#settings)
-- [Linked unit](#linked-unit)
-- [Resetting to defaults](#resetting-to-defaults)
-- [Tuning guide](#tuning-guide)
-- [Safety behaviour](#safety-behaviour)
-- [Dashboard card](#dashboard-card)
-- [Troubleshooting](#troubleshooting)
+<p align="center"><img src="docs/replay-demo.svg" alt="Animated replay: the pipe's temperature gradient shifting as the recuperator exhausts and takes air in, with a history graph of both probes underneath" width="640"></p>
+<p align="center"><sub>A simulated quarter-hour in winter, drawn by the integration's own <a href="#watching-it-breathe">replay</a>.</sub></p>
 
 ## What you need
 
-- **Two fans, each on its own on/off switch** in Home Assistant: an *exhaust* fan (inside to outside) and an *intake* fan (outside to inside). Any `switch`, `fan`, `light` or `input_boolean` entity works, for example the two outlets of a smart plug.
-- **Two temperature sensors in the airflow at the two ends of the core**:
-  - the **inside probe** at the indoor end: it reads indoor air while exhausting;
-  - the **outside probe** at the outdoor end: it reads outdoor air while taking air in.
-
-  DS18B20 probes on an ESP32 with ESPHome work well. Read them every few seconds (for example `update_interval: 2s`), because a phase only lasts tens of seconds. An ESPHome `delta` filter (for example `delta: 0.1`) is fine; the integration treats "no new value" as "unchanged".
-
-- Probes may report in °C or °F (or K); readings are converted. Temperatures are shown in your Home Assistant units.
+- **Two fans on their own switches.** One blows air out (exhaust), the other blows air in (intake). Any `switch`, `fan`, `light` or `input_boolean` works, for example the two outlets of a smart plug.
+- **Two temperature probes in the airflow**, one at each end of the core. The *inside probe* sits at the room end and the *outside probe* at the outdoor end. DS18B20 probes on an ESP32 with ESPHome work well. Have them report every couple of seconds, because a breath only lasts tens of seconds to a few minutes. °C, °F and K are all fine.
 - Home Assistant 2025.2 or newer.
 
-## Installing
+## Getting started
 
-[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=geirskogul&repository=recuperator&category=integration)
+[![Open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=geirskogul&repository=recuperator&category=integration)
+[![Add a Recuperator.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=recuperator)
 
-The button above opens the repository in HACS on your own Home Assistant. Or by hand, through HACS:
+1. **Install it through HACS.** Use the first button above, or add `https://github.com/geirskogul/recuperator` as a custom repository of type *Integration*. Download it, then restart Home Assistant.
+2. **Add a recuperator.** Use the second button, or go to Settings, Devices & services, Add integration, Recuperator. Give it a name (say *Basement Breather*) and pick the two fans and the two probes.
+3. **Check the wiring.** A new recuperator starts with **Breathing** off and leaves your fans alone until you switch it on. Set **Mode** to *Timed* and turn Breathing on:
+   - The exhaust fan should run first, then both stop, then the intake fan runs.
+   - During exhaust, the outside probe should drift towards the room temperature. During intake, the inside probe should drift towards the outdoor temperature.
+   - If either is the wrong way round, swap the fans or the probes with **Reconfigure** in the integration's menu.
+4. **Set Mode to Automatic.** It takes a couple of breaths to learn the indoor and outdoor temperatures, and then it finds its own rhythm.
 
-1. HACS, the three-dot menu, **Custom repositories**. Add `https://github.com/geirskogul/recuperator` with type **Integration**.
-2. Find **Recuperator** in HACS, **Download**.
-3. **Restart Home Assistant**.
+## How it breathes
 
-To update later: HACS shows the new version; Update, then restart Home Assistant.
+During exhaust, the inside probe reads the room air going out, and the outside probe shows how far the core's outdoor end has warmed up. During intake it's the other way round. A breath ends at whichever of these comes first:
 
-## Adding a recuperator
+- **Recovered.** The far end of the core has caught up by the **Recovery target** (80 % of the way, by default).
+- **Settled.** The far end has got at least halfway there and has stopped changing, so the core has done what it can.
+- **Supply colder than room.** For intakes only: the air coming into the room has dropped more than **Maximum supply drop** (3 °C) below the room temperature. This is the main protection against draughts.
+- **Maximum phase.** A plain time limit (2 minutes by default).
 
-[![Open your Home Assistant instance and start setting up a new Recuperator.](https://my.home-assistant.io/badges/config_flow_start.svg)](https://my.home-assistant.io/redirect/config_flow_start/?domain=recuperator)
+No breath ever ends before **Minimum phase** (20 s), which protects the fans and relays. Then both fans rest for the **Pause**, and the other phase begins.
 
-Settings, Devices & services, **Add integration**, **Recuperator**, then pick:
+When the probes can't help, the phases simply run for fixed times (**Timed exhaust** and **Timed intake**, 60 s each). That happens in *Timed* mode, when a probe is offline, and when inside and outside are within **Similar temperatures** (2 °C) of each other, so there's nothing to recover.
 
-| Field | What to choose |
-| --- | --- |
-| Name | Anything, for example *Basement Breather*. Entity names start with it. |
-| Exhaust fan | The switch for the fan that blows **indoor air out** |
-| Intake fan | The switch for the fan that blows **outdoor air in** |
-| Inside probe | The sensor at the **indoor end** of the core |
-| Outside probe | The sensor at the **outdoor end** of the core |
+**Last change reason** always says why the last breath ended. Together with **Last exhaust**, **Last intake** and **Heat recovery**, it's the quickest way to see what the cycle is up to.
 
-Everything else has sensible defaults and can be changed later. To point it at different fans or probes afterwards: the integration's three-dot menu, **Reconfigure** (settings are kept). Renaming a fan's or probe's entity ID in Home Assistant is followed automatically.
+### Recovery target
 
-## First run
+This is the one setting worth thinking about.
 
-A new recuperator starts with **Breathing off**, and it does not touch the fans until you switch it on.
+- **A low target** (10–25 %) switches as soon as the far end of the core starts to change. The core never runs dry, so incoming air arrives warm. That's the best heat recovery, and it's how commercial units behave: they reverse roughly every minute.
+- **A high target** (70–90 %) lets the core fill and empty completely. Each breath moves more air, which helps with a long hose, but the tail end of each breath recovers little heat.
 
-1. Set **Mode** to **Timed** and turn **Breathing** on. Check that the exhaust fan runs first, then both stop, then the intake fan runs. If they are the wrong way round, swap them with **Reconfigure**.
-2. Watch the two probe readings. During exhaust the outside probe should move towards the inside probe's temperature; during intake the inside probe should move towards the outside probe's. If it is the other way round, the probes are swapped: **Reconfigure**.
-3. Set **Mode** to **Automatic**. The first couple of cycles learn the indoor and outdoor air temperatures; after that the phases adapt.
-
-## How the cycle decides when to switch
-
-In each phase, one probe reads the air being blown through (the **reference**) and the other shows how far the core's far end has caught up (the **far** probe):
+If moving air matters more to you than saving heat, go higher. With a big core or slow fans, even a low target may take minutes to reach. In that case *Maximum phase* sets the rhythm, and that's fine.
 
-| Phase | Fan | Reference probe | Far probe |
-| --- | --- | --- | --- |
-| Exhaust | exhaust fan | inside (indoor air) | outside (outer end of the core warming) |
-| Intake | intake fan | outside (outdoor air) | inside (inner end of the core cooling) |
+### In winter
 
-A running phase ends at the first of:
+A cold basement should still breathe, so the room is protected relative to its own temperature rather than by a fixed number. At 7 °C inside and −25 °C outside, an intake keeps going as long as the core warms the incoming air to 4 °C or more.
 
-1. **Supply colder than room** (intake only, after *Minimum phase*): the air entering the room is more than *Maximum supply drop* below the room temperature. **Supply below floor**: the same against the optional fixed *Minimum supply temperature*.
-2. **Recovered**: the far probe has closed *Recovery target* per cent of the gap between where it started and the air temperature. The air temperature is the reference probe, or the last measured indoor/outdoor temperature while the reference probe is still catching up after the switch (probes need 10–30 s to register a change).
-3. **Settled**: the far probe has got at least halfway to the recovery target, and both probes have since moved less than *Settle change* during the last *Settle window*. A far probe that has not moved yet does **not** count as settled: it means the core is still doing its job.
-4. **Maximum phase**: a hard time limit.
-5. **Phase limit** (only if turned on, see [Phase limit](#phase-limit)): the intake (or the exhaust) has reached its share of the other phase's last length.
+When it's colder than **Cold threshold** (−5 °C) outside:
 
-...but never before **Minimum phase**. Then both fans are off for **Pause**, and the other phase starts.
-
-**Timed phases** (fixed lengths: *Timed exhaust* for exhaust, *Timed intake* for intake) are used instead when:
-- Mode is **Timed**;
-- indoor and outdoor air are less than **Similar temperatures** apart (mild weather, or the core disconnected); there is nothing to recover, but the room still breathes;
-- a probe is unavailable (the phase finishes on time; the next phase uses the probes again if the probe is back).
+- **Intakes are capped** at **Cold intake limit** (5 minutes). Keep this longer than fresh air takes to travel through your ducting. With a long hose, the first part of every intake just pulls back the air you blew out.
+- **Exhausts run at least as long as the intake before them**, and up to **Cold exhaust extra** (7 s) longer. The warm air keeps the core's outdoor end from icing up.
+- **Frost risk** turns on if an exhaust never warmed the outdoor face of the core above freezing. If you see it, raise *Cold exhaust extra* or shorten the intakes.
 
-**Cold weather** (outdoor air at or below **Cold threshold**, measured by the outside probe during intake):
-- Intake never runs longer than **Cold intake limit** (default 45 s), so less cold air comes in.
-- Exhaust runs **at least as long as the last intake**, and at most **Cold exhaust extra** seconds longer. Warm air leaving last keeps the core's outdoor end from icing up and keeps the room from cooling down.
-- The **Cold weather** indicator is on while these limits apply.
+The same logic works in summer: the core stores the room's coolness and cools the air coming in.
 
-The same logic works in heat (summer): the core stores the indoor coolness during exhaust and cools the incoming air.
+### What it looked like on the first install
 
-## Entities
+Three ceramic cores in a row, small duct fans at low speed, a hose to the outside, 12 °C outdoors and 20.5 °C in the basement:
 
-For a recuperator named *Basement Breather*:
+- Fresh air took about three minutes to reach the core.
+- For those first three minutes, the air entering the basement stayed within 0.3 °C of room temperature. After that it fell by about 0.9 °C a minute.
+- So intakes ended after 6–7 minutes, when the air reached the 3 °C supply drop. Exhausts ran about the same, and a full breath took 12–15 minutes.
 
-| Entity | What it is |
-| --- | --- |
-| `switch.basement_breather_breathing` | **Breathing** on/off. Off: both fans are switched off once, then left alone (you can run them by hand). |
-| `select.basement_breather_mode` | **Mode**: Automatic, Timed, Exhaust only, Intake only |
-| `sensor.basement_breather_phase` | Exhaust, Pause, Intake or Stopped. Attributes: when the phase started, the next phase, whether (and why) it is timed, cold weather, mode |
-| `sensor.basement_breather_last_change_reason` | Why the last phase ended: Recovered, Settled, Maximum time, Cold limit, Timed, Supply colder than room, Supply below floor, Phase limit, Started, Stopped |
-| `sensor.basement_breather_last_exhaust` / `..._last_intake` | Length of the last exhaust / intake phase (s) |
-| `sensor.basement_breather_basement_temperature` | Indoor air temperature: the inside probe at the end of the last exhaust |
-| `sensor.basement_breather_outdoor_temperature` | Outdoor air temperature: the outside probe at the end of the last intake |
-| `sensor.basement_breather_heat_recovery` | How much of the gap the core closed in the last temperature-driven phase (%) |
-| `image.basement_breather_diagram` | A live picture of the pipe, filled with the temperature gradient (see [Diagram](#diagram)) |
-| `sensor.basement_breather_linked_unit` | What the linked unit is doing: Intake, Exhaust or Idle. Only there while a unit is linked (see [Linked unit](#linked-unit)) |
-| `text.basement_breather_diagram_colours` | The diagram's colour scale, editable (see [Diagram colours](#diagram-colours)) |
-| `switch.basement_breather_passive_intake` | **Passive intake** on/off (see [Passive intake](#passive-intake)) |
-| `select.basement_breather_phase_limit` | **Phase limit**: Off, Limited intake, Limited exhaust (see [Phase limit](#phase-limit)) |
-| `binary_sensor.basement_breather_passive_inflow` | On if air was seen flowing in during the running or last passive intake |
-| `sensor.basement_breather_passive_inflow_delay` | How long into the last passive intake the inflow was seen (s) |
-| `binary_sensor.basement_breather_cold_weather` | On while the cold-weather limits apply |
-| `binary_sensor.basement_breather_frost_risk` | On if, in cold weather, the last exhaust never warmed the core's outdoor face above freezing (condensation there can ice up) |
-| `number.basement_breather_...` | One per setting (below), under the device's **Configuration** section |
-| `button.basement_breather_reset_settings_to_defaults` | Puts every setting back to its default |
+## On the device page
 
-The replay has a device of its own, **Basement Breather Replay**, listed on the recuperator's device page under *Connected devices*. It holds the replay animation, the **Create** button and the three replay settings (see [Replay](#replay-watch-it-breathe)).
+Everything lives on one device:
 
-On the device page, the detail for tuning (Last change reason, Last exhaust, Last intake, Passive inflow, Passive inflow delay) is under **Diagnostic**, and the settings under **Configuration**. On a recuperator added from 0.3.0 on, the less-used settings (Settle window, Settle change, Similar temperatures, Cold exhaust extra, Minimum supply temperature, Passive inflow change) and the Diagram colours text start disabled: they are always on the **Configure**, **Settings** page, or enable their entities if you want them on a dashboard.
+- **Breathing**: on or off. Off switches both fans off once, then leaves them alone, so you can run them by hand.
+- **Mode**:
+  - *Automatic*: the normal probe-driven cycle.
+  - *Timed*: fixed lengths, which is handy for testing or with unreliable probes.
+  - *Exhaust only* or *Intake only*: runs one fan continuously, for example to dry the room out fast.
+- **Phase**, **Last change reason**, **Last exhaust**, **Last intake**, **Heat recovery**, and the learned **Basement temperature** and **Outdoor temperature**.
+- **Cold weather** and **Frost risk** indicators.
+- A live **Diagram** of the pipe (see below).
+- **Every setting** as a number, so you can put them on a dashboard. The less common ones start hidden.
 
-Breathing and Mode survive a Home Assistant restart, and so do the learned basement and outdoor temperatures. After a restart the cycle waits up to 60 s for both probes to report, then starts again with exhaust.
+You can also change all the settings at once under **Configure**, **Settings**. Each one has a short explanation there. Changes take effect within a second, without restarting anything.
 
-## Modes
+Breathing, Mode and the learned temperatures all survive a restart. After a restart, it waits up to a minute for the probes, then carries on with an exhaust.
 
-| Mode | What happens |
-| --- | --- |
-| **Automatic** | The probe-driven cycle described above (normal use) |
-| **Timed** | Fixed-length phases (*Timed exhaust* and *Timed intake*, set separately), ignoring the probes except for the cold intake limit. Good for checking the wiring, or if the probes are unreliable. |
-| **Exhaust only** | The exhaust fan runs continuously (for example to dry the room out quickly, or to test airflow) |
-| **Intake only** | The intake fan runs continuously |
-
-Changing mode takes effect within a second; a running fan is stopped and the pause is kept before the other starts.
-
-## Settings
-
-All settings take effect within a second, without restarting the cycle. Temperatures (Cold threshold, Minimum supply temperature) are shown in your Home Assistant units; temperature *differences* (Settle change, Similar temperatures, Maximum supply drop, Passive inflow change) are always in °C, where 1 °C is 1.8 °F. Change them either on the device page (the **Configuration** section, one number per setting, handy on a dashboard), or all together with **Configure**, then **Settings**. The replay has its own settings, in their own place: see [Replay settings](#replay-settings). A linked second unit is set up under **Configure**, **Linked unit** (see [Linked unit](#linked-unit)).
-
-| Setting | Default | Range | What it does |
-| --- | --- | --- | --- |
-| Recovery target | 80 % | 5–100 | End a phase when the far probe has closed this much of the gap. See [Choosing the recovery target](#choosing-the-recovery-target). |
-| Settle window | 15 s | 5–1800 | Time over which "settled" is judged |
-| Settle change | 0.2 °C | 0.05–2 | Both probes moving less than this over the settle window counts as settled |
-| Minimum phase | 20 s | 5–3600 | No phase ends sooner (protects the fans and relays from rapid switching) |
-| Maximum phase | 120 s | 10–86400 (24 h) | No exhaust or powered intake phase lasts longer. If set below Minimum phase, Minimum phase wins. |
-| Pause | 1 s | 0–30 | Both fans off between phases |
-| Timed exhaust | 60 s | 10–86400 | Exhaust length in Timed mode, in mild weather, and while a probe is unavailable |
-| Timed intake | 60 s | 10–86400 | Intake length in the same cases. The cold intake limit still applies; a passive intake uses *Passive intake maximum* |
-| Similar temperatures | 2.0 °C | 0–20 | Indoor and outdoor air closer than this: timed phases instead of probe-driven ones. 0 turns this off. |
-| Cold threshold | −5 °C | −40–15 | Outdoor temperature at or below which the cold-weather limits apply |
-| Cold intake limit | 300 s | 10–86400 | In cold weather, intake never runs longer than this. Leave enough time for fresh air to get through the ducting (see [Winter](#winter)) |
-| Cold exhaust extra | 7 s | 0–60 | In cold weather, exhaust runs at least as long as the last intake and at most this much longer |
-| Maximum supply drop | 3 °C | 0.5–20 | During intake, once *Minimum phase* has passed, end the intake if the air entering the room is more than this much colder than the room (the basement temperature measured at the end of the last exhaust). Follows the room, so it works in every season. **The main draught protection.** |
-| Passive intake | off | on/off | Intake phases run with the intake fan **off** (see [Passive intake](#passive-intake)) |
-| Passive intake maximum | 1800 s (30 min) | 60–86400 | The longest a passive intake may last |
-| Passive inflow change | 0.3 °C | 0.05–5 | How far the inside probe must move towards the outdoor temperature during a passive intake to count as air flowing in |
-| Phase limit | Off | Off, Limited intake, Limited exhaust | Keep the intake (or the exhaust) shorter than the other phase (see [Phase limit](#phase-limit)) |
-| Phase limit share | 90 % | 10–100 | With a phase limit on: how long the limited phase may last, as a share of the other phase's last length |
-| Diagram colours | weather-service scale | text | The diagram's colour stops (see [Diagram colours](#diagram-colours)) |
-| Minimum supply temperature | −30 °C (off) | −30–25 | Optional hard floor: the intake also ends if the air entering the room drops below this. Only set it if there is a temperature the room must never see (for example water pipes). |
+To start over, the **Reset settings to defaults** button resets all the settings and the diagram colours. It never touches your fans, probes, Breathing, Mode or a linked unit.
 
-## Linked unit
+## Extras
 
-A second unit can breathe together with the recuperator, moving air **the opposite way** so the house stays balanced (no over- or under-pressure): while this recuperator exhausts, the linked unit takes air in; while this one takes air in, the linked unit exhausts. The linked unit follows this recuperator's phases, pauses and mode, and is off whenever this one pauses or stops.
+### Phase limit
 
-Set it up with **Configure**, **Linked unit**, and pick what the linked unit is:
+To keep one phase shorter than the other, set **Phase limit** to *Limited intake* or *Limited exhaust*. The limited phase then never runs longer than **Phase limit share** (90 %) of the other phase just before it. For example, *Limited intake* takes in a bit less air than you blow out. It works in Automatic and Timed mode, and a phase it cuts short ends with the reason *Phase limit*.
 
-| Linked unit | Fans to pick | What it does |
-| --- | --- | --- |
-| **None** | – | No linked unit (the default) |
-| **Full recuperator** | its exhaust fan and its intake fan | A second biphasic unit: its intake runs during this one's exhaust, its exhaust during this one's intake |
-| **Intake fan only** | its intake fan | Runs while this recuperator exhausts (make-up air) |
-| **Exhaust fan only** | its exhaust fan | Runs while this recuperator takes air in. With *Passive intake* on, this is what draws the air in through the core |
+A few things still come first:
 
-- In **Exhaust only** / **Intake only** mode, the linked unit runs continuously the other way (for example Exhaust only: a linked intake fan runs all the time).
-- A full linked recuperator's two fans are interlocked like the main ones: one only starts after the other reports off.
-- Its fans must not be this recuperator's own fans, and not fans another recuperator already drives. If the second unit was added as a recuperator of its own, remove that one first so only one of them switches the fans.
-- Breathing off switches the linked fans off as well, then leaves them alone.
-- The **Linked unit** sensor shows what it is doing: Intake, Exhaust, Idle, or Not linked. The Phase sensor has `linked_unit` and `linked_phase` attributes.
-- Saving the Linked unit page restarts the recuperator (Breathing and Mode are kept).
+- **Minimum phase.** A limited phase always runs at least that long.
+- **Frost protection.** In cold weather the exhaust keeps running at least as long as the intake, so *Limited exhaust* pauses until it warms up.
+- **Passive intakes** are never limited.
 
-## Choosing the recovery target
+### Passive intake
 
-The probes sit in the airstream at the two faces of the core. During intake, the inside probe reads the air leaving the core into the room. With a good core it stays close to room temperature for a long time, because the core warms the incoming air, and only starts to drop when the core has given up most of its stored heat (the "breakthrough"). Exhaust works the same way in reverse at the outdoor face.
+With **Passive intake** on, the intake fan stays off. After each exhaust, the room refills by itself through the core, and the core still warms the air on the way in. This is useful for running on one fan, or for finding out whether your house breathes back on its own.
 
-- **Low target (10–25 %)**: switch as soon as the far end *starts* to change. The core never runs out, so incoming air arrives warm. **Best heat recovery.** This is how commercial single-tube units work; they reverse about every minute.
-- **High target (70–90 %)**: let the core fill up or empty completely. Longer phases move more air per phase (**more ventilation** through a long hose), but the last part of each phase recovers little heat.
-- With a large core or slow fans, even a low target can take minutes to reach. *Maximum phase* then sets the rhythm; that is fine.
+- A passive intake can last up to **Passive intake maximum** (30 minutes), or less if the usual rules end it sooner.
+- **Passive inflow** turns on once the inside probe shows outdoor air really coming in. **Passive inflow delay** says how long that took.
+- If Passive inflow never comes on, the air is getting in somewhere else.
 
-If ventilation matters more than heat recovery, use a higher target or longer *Minimum phase*, and rely on *Minimum supply temperature* and the cold-weather limits to protect the room in winter.
+### Linked unit
 
-## Passive intake
+A second unit can breathe in the opposite direction, so the house stays balanced: while this one exhausts, the other takes air in, and the other way round. Set it up under **Configure**, **Linked unit**. It can be a second recuperator with two fans, or just a single intake or exhaust fan. It follows this unit's phases and pauses. A linked full recuperator gets the same interlock as the main one: its two fans never run together.
 
-With **Passive intake** on (a switch on the device page, or Configure, Settings), the cycle keeps the **intake fan off**. After each exhaust has lowered the pressure indoors, the room refills on its own through the core: the air drifts back in, and the core still warms (or cools) it on the way. The exhaust fan works as usual. This is for testing whether the building re-ventilates passively, or for running on one fan.
+## Watching it breathe
 
-- A passive intake lasts up to **Passive intake maximum** (default 30 minutes, up to 24 hours). It can end sooner by the usual rules: *Recovery target*, *Settled*, *Maximum supply drop*, *Minimum supply temperature* and the cold-weather limits. In timed breathing, a passive intake lasts the passive maximum.
-- **Is air actually coming in?** With the fan off, only air that really flows in can move the inside probe (the room end of the core) towards the outdoor temperature. Once it has moved **Passive inflow change** (default 0.3 °C) that way, **Passive inflow** turns on, and **Passive inflow delay** shows how long into the intake that happened. If Passive inflow stays off for whole intakes, the room is not refilling through the core (it may be leaking in elsewhere instead). This needs outdoor and indoor air to differ by more than the Passive inflow change.
-- In cold weather, exhaust is only stretched to match the last intake after a **powered** intake, not after a long passive one.
-- The Diagram shows **Intake (passive)** with a dashed arrow.
-- The Phase sensor stays `intake` during a passive intake; its `passive` attribute is `true`.
+### The diagram
 
-## Phase limit
+The **Diagram** image draws the recuperator as a pipe:
 
-To keep one phase always shorter than the other, set **Phase limit** (a selector on the device page, or Configure, Settings):
+- The room end is on the left and the outdoor end on the right.
+- The pipe is filled with a colour gradient between the two probe readings, in weather-map colours: purple for bitter cold through blues and greens to orange and red.
+- The readings sit in the pipe's ends, and an arrow shows which way the air is moving.
 
-| Phase limit | What happens |
-| --- | --- |
-| **Off** (default) | Each phase ends by its own rules |
-| **Limited intake** | An intake never lasts longer than **Phase limit share** (default 90 %) of the exhaust just before it. For example, to take in less air than you blow out, or to keep cold intakes short without a fixed limit. |
-| **Limited exhaust** | An exhaust never lasts longer than *Phase limit share* of the intake just before it |
+![Winter](docs/diagram-winter.svg)
+![Summer](docs/diagram-summer.svg)
 
-It works in Automatic and Timed breathing, and ends the phase with the reason **Phase limit**. It only ever makes the limited phase shorter: the phase can still end sooner by the usual rules. Some things still win over it:
-- **Minimum phase**: a limited phase always runs at least that long (it protects the fans and relays), so after an exhaust of exactly *Minimum phase* the intake is as long, not shorter.
-- In cold weather, the exhaust still runs at least as long as the last intake (see *Cold exhaust extra*), so **Limited exhaust** does not apply then: that rule keeps the core from freezing.
-- Passive intakes are not limited, and an exhaust after a passive intake is not limited either.
-- The very first phase after switching on has nothing to compare with, so it is not limited.
-
-## Winter
-
-A basement can be cold in winter (say 7 °C with −25 °C outside), and it should still breathe. So the room is protected **relative to its own temperature**, not by a fixed number:
-
-- **Maximum supply drop** ends an intake when the incoming air is more than 3 °C (default) colder than the room. With a 7 °C basement, intake continues while the core warms the incoming air to 4 °C or more.
-- **Minimum phase** comes first, so every intake runs long enough to actually bring fresh air in. With a long hose or slow fans that can take several minutes: at first the intake just pulls back the air that was exhausted into the hose. Watch the outside probe during an intake: when it has settled at outdoor temperature, fresh air is arriving.
-- **Cold intake limit** is a backstop, not the main protection. Keep it longer than the time fresh air needs to arrive.
-- **Exhaust runs at least as long as the last intake**, and at most *Cold exhaust extra* longer, which keeps warming the core's outdoor end.
-- **Frost risk**: if a cold-weather exhaust never gets the core's outdoor face above freezing, humid exhaust air can ice up there. The *Frost risk* indicator comes on; raise *Cold exhaust extra* or shorten the intakes.
-
-## Real-world example
-
-Measured on the first installation (three ceramic cores in a row, small duct fans at low speed, a hose to outside, outdoor air 12 °C, basement 20.5 °C):
-- Fresh air took about **3 minutes** to reach the core during intake (the outside probe settling at outdoor temperature).
-- For the first **3 minutes** of intake the air entering the basement stayed within 0.3 °C of room temperature; after that it fell about 0.9 °C a minute.
-- With *Maximum supply drop* 3 °C, intakes end after about 6–7 minutes; exhausts behave the same way in reverse. A full breath takes about 12–15 minutes.
-
-## Upgrading
-
-**0.5.0:** new **Phase limit** setting (off by default): keep the intake, or the exhaust, shorter than the other phase. See [Phase limit](#phase-limit).
-
-**0.4.0:** the diagram and replay show the probe readings in the pipe's ends instead of under it. The replay gains a history graph of the two probes with a cursor sweeping across in step. A new [Replay card](#replay-card) picks the period with the History page's date picker; the Create replay action takes an optional **start** for it. Refresh the browser once after updating so the card's script loads.
-
-**0.3.0:** probes reporting in °F are now converted (before, their numbers were taken as °C). Last change reason, Last exhaust, Last intake, Passive inflow and Passive inflow delay move to the device page's Diagnostic section. The Create replay action needs the recuperator chosen when there is more than one. The Linked unit sensor only exists while a unit is linked. The last replay is shown again after a restart.
-
-**0.2.0:** *Timed phase* is split into **Timed exhaust** and **Timed intake**; both start at your old Timed phase value, and the old Timed phase entity is removed. The replay's entities move to their own Replay device (their entity IDs stay the same).
-
-Settings you already have keep their stored values when a new version changes a default. After upgrading to 0.1.3, check **Cold intake limit** (the old default 45 s is too short for most duct runs; the new default is 300 s) and **Minimum supply temperature** (now off by default, −30 °C). Or press **Reset settings to defaults**, which resets all settings.
-
-## Resetting to defaults
-
-- **Reset settings to defaults** (button on the device page) resets all settings **and** the diagram colours.
-- **Configure**, **Settings**, tick **Reset settings to defaults**: resets the cycle settings only; the colours and replay settings are kept.
-- Neither touches the [Linked unit](#linked-unit).
-- **Configure**, **Diagram colours**, tick **Reset colours to defaults**: resets the colours only.
-
-The chosen fans and probes, Breathing and Mode are always kept.
-
-## Tuning guide
-
-| What you see | Try |
-| --- | --- |
-| Phases end very quickly, lots of switching | Raise *Minimum phase*, or raise *Recovery target* |
-| Phases always hit *Maximum time* (Last change reason) | The core never gets to the target: lower *Recovery target* (e.g. 70 %), or raise *Maximum phase* if you want it to keep going |
-| Phases often end as *Settled* at low heat recovery | The probes are slow or the fans weak: raise *Settle window* (e.g. 25 s) |
-| Cold draughts | Lower *Maximum supply drop* (e.g. 2 °C) |
-| Intakes end too soon to bring in fresh air | Raise *Maximum supply drop*, and make *Minimum phase* at least as long as fresh air takes to reach the core (watch the outside probe settle at outdoor temperature during intake) |
-| *Frost risk* comes on | Raise *Cold exhaust extra*, or shorten intakes (*Maximum supply drop*, *Cold intake limit*) |
-| Phases always run to *Maximum phase* | Normal with a big core and slow fans: the far end never reaches the target. Lower *Recovery target*, or treat *Maximum phase* as your cycle length |
-| Frost or ice at the outdoor end of the core | Raise *Cold exhaust extra*, so warm air runs longer after each intake |
-| Room not drying out | Lower *Recovery target* (more air changes per hour), or run *Exhaust only* for a while |
-| Always timed when the weather is mild | Expected. Lower *Similar temperatures* if you want the probes to decide even for small differences |
-
-The **Last change reason**, **Last exhaust**, **Last intake** and **Heat recovery** sensors, shown in history graphs, are the best guide to what the cycle is doing.
-
-## Safety behaviour
-
-- **The two fans are never on together** (nor the two fans of a linked full recuperator). A fan is only switched on after the other one reports *off*. If a switch does not turn off (a stuck relay, a lost network connection), the cycle waits rather than start the other fan.
-- **Always switch off before switching on**, with the *Pause* in between.
-- Commands are re-sent at most every 5 seconds if a switch does not follow, and not at all while a switch is unavailable.
-- **Breathing off** switches both fans off once and then leaves them alone. **Removing or disabling the integration** also switches both fans off.
-- A probe that becomes unavailable does not stop breathing: the phase finishes on time.
-- **Relay wear:** a cycle of about a minute means roughly 2,500 switchings a day per fan. Ordinary relays (for example in smart plugs) are not rated for that for long. For permanent use, switch the fans with solid-state relays, or lengthen the phases (*Minimum phase*, *Recovery target*).
-
-## Diagram
-
-The **Diagram** image entity draws the recuperator as a pipe with pinched ends: the **inside** (room) end on the left, the **outside** end on the right. The inside of the pipe is filled with a gradient from the inside probe's temperature to the outside probe's, in colours approximating the U.S. National Weather Service temperature maps (purple for extreme cold, blues around freezing, greens, yellow, orange, red for heat). The two probe readings are shown in the pipe's ends, each on a fixed-size, half-transparent dark box so they stay readable on any colour. The current phase and the airflow direction are shown above it: exhaust flows left to right (inside to outside), intake right to left. It redraws when the phase changes, and when the probes change at most every 10 seconds. The gradient is drawn straight between the two probes; the real temperature inside the core is not measured.
-
-![Winter example](docs/diagram-winter.svg)
-![Summer example](docs/diagram-summer.svg)
-
-### Diagram colours
-
-Both the temperature setpoints and their colours can be changed:
-- **Configure**, then **Diagram colours**: one row per stop, with a temperature box and a **colour picker**, pre-filled with the current scale. Change a colour by clicking its colour box. Clear a temperature to remove that stop, or fill in one of the empty rows to add one (up to 20 stops). The order does not matter: stops are sorted by temperature. Tick **Reset colours to defaults** to restore the weather-service scale.
-- Or, for quick edits from a dashboard, the **Diagram colours** text entity on the device page: the whole scale on one line, stops separated by `;`, for example `-10 #2f6fdc; 5 #3cc4c6; 20 #f1e344; 35 #d9401f`.
-
-Colours in between stops are blended, and temperatures beyond the ends use the end colours. An invalid scale (a stop without a colour, two stops at the same temperature, fewer than two stops) is refused, and the old one is kept. The diagram redraws as soon as the colours change.
-
-The default scale:
-
-| °C | −40 | −30 | −20 | −12 | −5 | 0 | 5 | 10 | 15 | 20 | 25 | 30 | 35 | 40 | 46 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| colour | `#e3c6f5` | `#b07ad6` | `#6f3fb4` | `#3a3fbf` | `#2f6fdc` | `#4fa3ec` | `#3cc4c6` | `#46bf62` | `#9fd34a` | `#f1e344` | `#f6b637` | `#ee7f25` | `#d9401f` | `#a8161f` | `#7b0b43` |
-
-Show it on a dashboard with a Picture Entity card:
+Put it on a dashboard with a picture-entity card:
 
 ```yaml
 type: picture-entity
@@ -338,135 +146,74 @@ show_name: false
 show_state: false
 ```
 
-## Replay: watch it breathe
+To use your own colours, go to **Configure**, **Diagram colours**. That page has a colour picker for each temperature stop.
 
-The action **Recuperator: Create replay** turns recorded history into an **animated diagram**. The gradient shifts through each breath, the inside and outside **temperatures** are shown in the two ends of the pipe as they were at each moment, and the Exhaust/Intake label and arrow switch with each phase. Under the pipe, a **history graph** of the inside and outside probes covers the whole period, with a strip under it coloured by phase (like a history timeline), and a **cursor sweeps across it in step with the animation**, with the time of day above it and a dot on each line at the reading being shown. It loops, and needs nothing but a browser.
+### Replays
 
-The easiest way to make one is the [Replay card](#replay-card), which picks the period with Home Assistant's own date picker. Or run the action from Developer tools, Actions, or from an automation or script:
+A replay turns recorded history into an animation, like the one at the top of this page:
+
+- The pipe breathes as it did at the time.
+- Underneath, a history graph of both probes has a cursor sweeping across it in step with the animation.
+- It's a plain animated SVG, so it plays in any browser.
+
+The easiest way to make one is the **replay card**, which comes with the integration. There's nothing extra to install. It uses the same date and time picker as Home Assistant's History page: pick a period, press **Create**, and watch.
+
+```yaml
+type: custom:recuperator-replay-card
+entity: image.basement_breather_replay_animation
+```
+
+You'll also find it in the dashboard editor's card list as *Recuperator replay*.
+
+You can also make one from an automation or script, for example a fresh replay of the last day every morning:
 
 ```yaml
 action: recuperator.create_replay
 data:
-  hours: 24              # how much history (0.25 to 168)
+  hours: 24              # or start: / end: for a specific period (up to 31 days)
   playback_seconds: 60   # length of one loop
-  # end: "2026-09-25 08:00:00"   # optional, default now
-  # start: "2026-09-24 08:00:00" # optional, instead of hours: replay start to end (up to 31 days)
-  # frames: 0            # 0 = one per minute of history (60 to 1440)
-  # config_entry_id: ...  # which recuperator; needed when there is more than one
 ```
 
-### Replay card
+The replay has its own small **Replay** device, listed under *Connected devices* on the recuperator's page. It holds the latest animation, a **Create** button and the default settings for new replays. Each replay is also saved as `/config/www/recuperator/<name>-replay.svg`, which you can open or share. Keep in mind that Home Assistant serves that folder without a login. Replays can only go back as far as your recorder keeps history, which is 10 days by default.
 
-The integration comes with a dashboard card for the replay. It has the **date and time range picker of Home Assistant's History page** (Today, Yesterday, This week, Last 24 hours, ... or any dates and times on its calendar), a **Create** button, and the replay under them. Pick a period, press Create, and the new replay appears when it is ready.
+## Staying safe
 
-```yaml
-type: custom:recuperator-replay-card
-entity: image.basement_breather_replay_animation   # the replay's Animation image
-# title: Replay              # optional card title
-# hours: 24                  # the period picked at first: the last 24 hours
-# playback_seconds: 60       # optional; like the action's value, it is saved
-# frames: 0                  # optional; like the action's value, it is saved
-```
+- **The two fans never run together.** A fan only starts once the other one reports *off*. If a relay sticks, the cycle waits instead of starting the other fan.
+- **A missing probe doesn't stop anything.** The breath just finishes on time.
+- **Turning Breathing off, or removing the integration, switches both fans off.**
+- **Watch your relays.** A one-minute rhythm means about 2,500 switchings a day per fan, which wears out the relays in ordinary smart plugs. For permanent use, switch the fans with solid-state relays, or lengthen the breaths with *Minimum phase* or *Recovery target*.
 
-It is also in the dashboard editor's card list (search for *Recuperator replay*), filled in with your replay. The card's script is loaded by the integration; there is no resource to add. A picked period is replayed from start to end (up to 31 days) and, unlike *Hours*, is not saved: the Create button on the Replay device keeps using the saved *Hours*. If the History page's picker cannot be loaded (a much older or newer Home Assistant), the card shows plain date and time boxes instead.
+## Tuning tips
 
-### Replay settings
-
-Everything about the replay lives on its own **Replay** device (*Basement Breather Replay*, under *Connected devices* on the recuperator's device page), apart from the cycle's settings:
-
-| Entity | What it is |
+| If you see... | Try |
 | --- | --- |
-| **Animation** (image) | The last replay |
-| **Create** (button) | Makes a new replay with the settings below |
-| **Hours** | How much history to replay (0.25–168 h, default 24), up to now |
-| **Playback length** | Length of one loop (5–900 s, default 60) |
-| **Frames** | Frames per replay (0–1440; 0, the default, = one per minute of history) |
+| Lots of rapid switching | A higher *Minimum phase* or *Recovery target* |
+| Cold draughts | A lower *Maximum supply drop*, e.g. 2 °C |
+| Intakes ending before fresh air arrives | A higher *Maximum supply drop*, and a *Minimum phase* at least as long as the air takes to arrive |
+| Every breath hitting *Maximum phase* | Normal with a big core. Lower the *Recovery target*, or treat *Maximum phase* as your rhythm |
+| *Frost risk*, or ice at the outdoor end | A higher *Cold exhaust extra* |
+| The room isn't drying out | A lower *Recovery target* (more air changes), or *Exhaust only* for a while |
+| Always *Timed* in mild weather | That's expected. Lower *Similar temperatures* if you want the probes to decide anyway |
 
-The same three settings are on their own page under **Configure**, **Replay**. Values given to the action are saved into them too (a call without values uses them).
+## When something's off
 
-Entity IDs: a recuperator added before 0.2.0 keeps its old IDs (`image.basement_breather_diagram_replay`, `button.basement_breather_create_replay`, `number.basement_breather_replay_hours`, ...). One added from 0.2.0 on gets IDs from the Replay device's name (`image.basement_breather_replay_animation`, `button.basement_breather_replay_create`, ...). The examples below use the older IDs; check yours on the Replay device.
+- **Nothing happens.** Is Breathing on? Does the Phase sensor change? With Breathing off, check that both fans switch from Home Assistant by hand.
+- **It's always timed.** The Phase sensor's `timed` attribute says why:
+  - `temperatures_similar`: mild weather, or the core isn't connected.
+  - `sensor_unavailable`: a probe is offline.
+  - `mode`: you're in Timed mode.
+- **It's stuck with a fan off.** The other fan's switch probably still reports *on*, and the interlock is waiting for it.
+- **More detail.** Turn on debug logging for `custom_components.recuperator`, and every phase change is logged with its reason.
+- **Reporting a bug.** Download the diagnostics from the integration's menu and attach them to an [issue](https://github.com/geirskogul/recuperator/issues).
 
-A dashboard with the replay and a button under it to make a fresh one at will (the image refreshes by itself when the new replay is ready):
+## Recent changes
 
-```yaml
-type: vertical-stack
-cards:
-  - type: picture
-    image_entity: image.basement_breather_diagram_replay
-  - type: button
-    entity: button.basement_breather_create_replay
-    name: New replay
-    icon: mdi:movie-open-play-outline
-    show_state: false
-    tap_action:
-      action: toggle
-```
+- **0.5.1.** Fixes a feedback loop: with *Limited intake* on in cold weather, the breaths could shrink one after another down towards *Minimum phase*. The frost rule now keeps each exhaust at least as long as the intake, without also holding it to the shortened intake.
+- **0.5.0.** Adds the [Phase limit](#phase-limit).
+- **0.4.0.** The readings moved into the pipe's ends. Replays gained the sweeping history graph, and the replay card arrived. Refresh your browser once after updating so the card loads.
+- **0.3.0.** Probes reporting in °F are now converted properly. The tuning read-outs moved to the Diagnostic section.
 
-(For a button entity, `toggle` presses it.)
-
-The result:
-- appears in the replay's **Animation** image entity. Show it with a Picture Entity card, like the live diagram:
-  ```yaml
-  type: picture-entity
-  entity: image.basement_breather_diagram_replay
-  show_name: false
-  show_state: false
-  ```
-- is saved as `/config/www/recuperator/<name>-replay.svg`, reachable at `http://<home-assistant>:8123/local/recuperator/<name>-replay.svg`. Open it in any browser, or share the file. Note that Home Assistant serves `/local/` without a login, so anyone who can reach your Home Assistant address can open it. Home Assistant only serves `/local/` if the `www` folder existed when it started, so if the link does not work the first time, restart Home Assistant once.
-- The action also returns the file's address, the period and the number of frames (Developer tools shows this as the response).
-
-It uses the recorder's history of the two probes and the Phase sensor, so it can only go back as far as the recorder keeps history (10 days by default). Each run replaces the previous replay; the last one is shown again after a restart.
-
-A fresh replay of the last day, every morning:
-
-```yaml
-automation:
-  - alias: Recuperator daily replay
-    triggers:
-      - trigger: time
-        at: "06:00:00"
-    actions:
-      - action: recuperator.create_replay
-        data:
-          hours: 24
-          playback_seconds: 60
-```
-
-## Dashboard card
-
-```yaml
-type: entities
-title: Basement breather
-entities:
-  - switch.basement_breather_breathing
-  - select.basement_breather_mode
-  - sensor.basement_breather_phase
-  - sensor.basement_breather_last_change_reason
-  - sensor.basement_breather_last_exhaust
-  - sensor.basement_breather_last_intake
-  - sensor.basement_breather_heat_recovery
-  - sensor.basement_breather_basement_temperature
-  - sensor.basement_breather_outdoor_temperature
-  - binary_sensor.basement_breather_cold_weather
-```
-
-Add the diagram above it with the Picture Entity card from [Diagram](#diagram).
-
-Add a *history-graph* card with the two probes and `sensor.basement_breather_phase` to see the cycle.
-
-## Troubleshooting
-
-- **Reporting a problem:** Settings, Devices & services, Recuperator, the three-dot menu, **Download diagnostics**, and attach the file to the [issue](https://github.com/geirskogul/recuperator/issues). It holds the settings, wiring, probe readings and units, fan states and where the cycle is.
-- **Nothing happens:** is **Breathing** on? Is the **Phase** sensor changing? Check the two fan switches work from Home Assistant by hand (with Breathing off).
-- **Always "Timed":** look at the Phase sensor's `timed` attribute: `temperatures_similar` (mild weather, or the core not connected), `sensor_unavailable` (a probe is offline) or `mode`.
-- **Stuck in one phase with the fan off:** the other fan's switch probably still reports *on* (interlock). Check that switch.
-- **Logs:** add to `configuration.yaml`:
-  ```yaml
-  logger:
-    logs:
-      custom_components.recuperator: debug
-  ```
-  Each phase change is then logged with its reason.
+Older notes are in the [releases](https://github.com/geirskogul/recuperator/releases). Your own values are always kept when a new version changes a default.
 
 ## Licence
 
