@@ -2,6 +2,8 @@
   "domain": "recuperator",
   "name": "Recuperator",
   "after_dependencies": [
+    "frontend",
+    "http",
     "recorder"
   ],
   "codeowners": [

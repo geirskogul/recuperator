@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 
 import pytest
+import voluptuous as vol
 
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ServiceValidationError
@@ -59,3 +60,29 @@ async def test_placeholder_without_a_saved_replay(hass: HomeAssistant, fans, pro
     entry = await setup_entry(hass, make_entry())
     assert entry.runtime_data.replay_svg is None
 
+
+
+async def test_start_and_hours_are_exclusive(hass: HomeAssistant, entry) -> None:
+    with pytest.raises(vol.Invalid):
+        await hass.services.async_call(
+            DOMAIN, "create_replay", {"hours": 2, "start": "2026-09-25 08:00:00"}, blocking=True, return_response=True
+        )
+
+
+@pytest.mark.parametrize(
+    ("start", "end", "key"),
+    [
+        ("2026-09-25 08:00:00", "2026-09-25 08:01:00", "period_too_short"),
+        ("2026-09-25 08:00:00", "2026-09-25 07:00:00", "period_too_short"),
+        ("2026-08-01 08:00:00", "2026-09-25 08:00:00", "period_too_long"),
+    ],
+)
+async def test_start_to_end_must_be_a_sensible_period(
+    hass: HomeAssistant, entry, start: str, end: str, key: str
+) -> None:
+    hass.config.components.add("recorder")  # checked before the period
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call(
+            DOMAIN, "create_replay", {"start": start, "end": end}, blocking=True, return_response=True
+        )
+    assert err.value.translation_key == key

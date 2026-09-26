@@ -12,6 +12,9 @@ create_replay:
           step: 0.25
           unit_of_measurement: h
           mode: box
+    start:
+      selector:
+        datetime:
     end:
       selector:
         datetime:

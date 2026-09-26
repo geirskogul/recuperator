@@ -16,6 +16,7 @@ from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.event import async_track_entity_registry_updated_event
 from homeassistant.helpers.typing import ConfigType
 
+from .card import async_register_card
 from .const import DOMAIN, LEGACY_TIMED_PHASE, PLATFORMS, WIRING_KEYS, unique_id_for
 from .controller import RecuperatorController
 from .entity import main_device_info
@@ -29,8 +30,9 @@ CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Register the Create replay action."""
+    """Register the Create replay action and serve the Replay card."""
     async_setup_services(hass)
+    await async_register_card(hass)
     return True
 
 

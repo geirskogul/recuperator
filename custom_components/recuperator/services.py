@@ -21,6 +21,7 @@ from .replay import MAX_FRAMES, Frame, frame_times, render_replay_svg, sample
 SERVICE_CREATE_REPLAY = "create_replay"
 ATTR_CONFIG_ENTRY = "config_entry_id"
 ATTR_HOURS = "hours"
+ATTR_START = "start"
 ATTR_END = "end"
 ATTR_PLAYBACK = "playback_seconds"
 ATTR_FRAMES = "frames"
@@ -28,7 +29,9 @@ ATTR_FRAMES = "frames"
 SCHEMA = vol.Schema(
     {
         vol.Optional(ATTR_CONFIG_ENTRY): cv.string,
-        vol.Optional(ATTR_HOURS): vol.All(vol.Coerce(float), vol.Range(min=0.25, max=168)),
+        # A period is either "hours" ending at "end" (or now), or "start" to "end" (or now).
+        vol.Exclusive(ATTR_HOURS, "period"): vol.All(vol.Coerce(float), vol.Range(min=0.25, max=168)),
+        vol.Exclusive(ATTR_START, "period"): cv.datetime,
         vol.Optional(ATTR_END): cv.datetime,
         vol.Optional(ATTR_PLAYBACK): vol.All(vol.Coerce(float), vol.Range(min=5, max=900)),
         vol.Optional(ATTR_FRAMES): vol.All(vol.Coerce(int), vol.Range(min=0, max=MAX_FRAMES)),
@@ -37,6 +40,9 @@ SCHEMA = vol.Schema(
 
 # action field -> stored setting (the last values used are remembered)
 SAVED = {ATTR_HOURS: "replay_hours", ATTR_PLAYBACK: "replay_playback_seconds", ATTR_FRAMES: "replay_frames"}
+
+MIN_PERIOD = timedelta(minutes=5)
+MAX_PERIOD = timedelta(days=31)
 
 
 def _error(key: str, **placeholders: str) -> ServiceValidationError:
@@ -71,7 +77,7 @@ async def _async_create_replay(hass: HomeAssistant, call: ServiceCall) -> Servic
     given = {SAVED[k]: call.data[k] for k in SAVED if k in call.data}
     if given:
         hass.config_entries.async_update_entry(entry, options={**entry.options, **given})
-    return await async_create_replay(hass, entry, end=call.data.get(ATTR_END))
+    return await async_create_replay(hass, entry, start=call.data.get(ATTR_START), end=call.data.get(ATTR_END))
 
 
 def replay_file(hass: HomeAssistant, entry: ConfigEntry) -> tuple[str, str]:
@@ -113,18 +119,43 @@ def _frames(states: dict, times: list[datetime], inside_id: str, outside_id: str
     ]
 
 
-async def async_create_replay(hass: HomeAssistant, entry: ConfigEntry, end: datetime | None = None) -> dict:
-    """Build a replay for one recuperator with its saved replay settings."""
+def _as_utc(when: datetime) -> datetime:
+    """A time from the action in UTC; one without a time zone is local time."""
+    return dt_util.as_utc(when if when.tzinfo else dt_util.as_local(when))
+
+
+def _period(hours: float, start: datetime | None, end: datetime | None) -> tuple[datetime, datetime]:
+    """The replayed period in UTC: start to end if a start is given, else `hours` up to end.
+
+    A missing end is now.
+    """
+    end = _as_utc(end or dt_util.utcnow())
+    if start is None:
+        return end - timedelta(hours=hours), end
+    start = _as_utc(start)
+    if end - start < MIN_PERIOD:
+        raise _error("period_too_short")
+    if end - start > MAX_PERIOD:
+        raise _error("period_too_long")
+    return start, end
+
+
+async def async_create_replay(
+    hass: HomeAssistant, entry: ConfigEntry, start: datetime | None = None, end: datetime | None = None
+) -> dict:
+    """Build a replay for one recuperator with its saved replay settings.
+
+    The period is start to end when a start is given (a replay card's date
+    picker), otherwise the saved Hours up to end; a missing end is now.
+    """
     if "recorder" not in hass.config.components:
         raise _error("recorder_needed")
     controller = entry.runtime_data
-    hours = controller.setting("replay_hours")
     playback = controller.setting("replay_playback_seconds")
     frames_wanted = int(controller.setting("replay_frames"))
-    end = end or dt_util.utcnow()
-    end = dt_util.as_utc(end if end.tzinfo else dt_util.as_local(end))
-    start = end - timedelta(hours=hours)
-    count = frames_wanted or min(MAX_FRAMES, max(60, int(hours * 60)))
+    start, end = _period(controller.setting("replay_hours"), start, end)
+    minutes = (end - start).total_seconds() / 60
+    count = frames_wanted or min(MAX_FRAMES, max(60, int(minutes)))
 
     phase_id = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_phase")
     ids = [controller.inside_sensor, controller.outside_sensor] + ([phase_id] if phase_id else [])

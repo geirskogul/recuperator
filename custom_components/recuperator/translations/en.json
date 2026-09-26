@@ -359,7 +359,11 @@
         },
         "hours": {
           "name": "Hours",
-          "description": "How much history to replay, ending at End (or now). Left out: the saved value (default 24)."
+          "description": "How much history to replay, ending at End (or now). Left out: the saved value (default 24). Not together with Start."
+        },
+        "start": {
+          "name": "Start",
+          "description": "When the replay starts, instead of Hours: the replay runs from Start to End (or now), up to 31 days. Not saved."
         },
         "end": {
           "name": "End",
@@ -401,6 +405,12 @@
     },
     "invalid_palette": {
       "message": "Diagram colours not changed: {error}"
+    },
+    "period_too_short": {
+      "message": "The replay period must be at least 5 minutes long, with the start before the end."
+    },
+    "period_too_long": {
+      "message": "The replay period can be at most 31 days long."
     }
   }
 }

@@ -67,6 +67,15 @@ NEUTRAL = "#9aa0a6"  # pipe fill when a probe is unavailable
 TEXT = "#8a9199"  # readable on both light and dark dashboards
 OUTLINE = "#6b7280"
 
+# The readings sit in the pipe's two ends, each on a fixed-size half-opaque box
+# (wide enough for "-40.0 °F" or "104.0 °F"), so they stay legible on any colour
+# and the box does not change size as the numbers change.
+BADGE_WIDTH = 78
+BADGE_HEIGHT = 24
+BADGE_Y = 120  # middle of the pipe
+INSIDE_BADGE_X = 64  # middle of the left end
+OUTSIDE_BADGE_X = 576  # middle of the right end
+
 
 def _hex(c: str) -> tuple[int, int, int]:
     return int(c[1:3], 16), int(c[3:5], 16), int(c[5:7], 16)
@@ -129,6 +138,24 @@ def format_temperature(celsius: float | None, unit: str = "°C") -> str:
     return f"{celsius:.1f} °C"
 
 
+def badge_box(x: float, y: float = BADGE_Y) -> str:
+    """The half-opaque box behind a reading, centred on (x, y)."""
+    return (
+        f'<rect x="{x - BADGE_WIDTH / 2:g}" y="{y - BADGE_HEIGHT / 2:g}" width="{BADGE_WIDTH}" '
+        f'height="{BADGE_HEIGHT}" rx="6" fill="#000" fill-opacity="0.5"/>'
+    )
+
+
+def badge_text_attrs(x: float, y: float = BADGE_Y) -> str:
+    """Attributes of a reading's text, centred in its box."""
+    return f'x="{x:g}" y="{y + 5:g}" text-anchor="middle" font-size="14" font-weight="bold" fill="#fff"'
+
+
+def badge(x: float, text: str, y: float = BADGE_Y) -> str:
+    """A reading in its box."""
+    return f"{badge_box(x, y)}<text {badge_text_attrs(x, y)}>{escape(text)}</text>"
+
+
 def render_svg(
     outside: float | None,
     inside: float | None,
@@ -142,7 +169,8 @@ def render_svg(
 
     Left end: inside (room side of the core, inside probe).
     Right end: outside (outdoor side of the core, outside probe).
-    Temperatures are given in °C and shown in `unit` (°C or °F).
+    Temperatures are given in °C and shown in `unit` (°C or °F), each in its
+    end of the pipe.
     """
     stops = "".join(
         f'<stop offset="{o:.3f}" stop-color="{c}"/>' for o, c in _stops(inside, outside, palette=palette)
@@ -175,8 +203,8 @@ def render_svg(
 <text x="320" y="22" text-anchor="middle" font-size="16" font-weight="bold" fill="{TEXT}">{escape(label)}</text>
 <path d="{_PIPE}" fill="url(#temp)" stroke="{OUTLINE}" stroke-width="3" stroke-linejoin="round"/>
 <text x="20" y="92" font-size="15" font-weight="bold" fill="{TEXT}">Inside</text>
-<text x="20" y="206" font-size="15" fill="{TEXT}">{format_temperature(inside, unit)}</text>
 <text x="620" y="92" text-anchor="end" font-size="15" font-weight="bold" fill="{TEXT}">Outside</text>
-<text x="620" y="206" text-anchor="end" font-size="15" fill="{TEXT}">{format_temperature(outside, unit)}</text>
+{badge(INSIDE_BADGE_X, format_temperature(inside, unit))}
+{badge(OUTSIDE_BADGE_X, format_temperature(outside, unit))}
 {title_el}
 </svg>"""
