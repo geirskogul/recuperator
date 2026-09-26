@@ -103,7 +103,8 @@ SETTINGS: tuple[Setting, ...] = (
     Setting("min_phase_seconds", 20, 5, 3600, 1, "s", "mdi:timer-outline"),
     Setting("max_phase_seconds", 120, 10, 86400, 1, "s", "mdi:timer-alert-outline"),
     Setting("pause_seconds", 1, 0, 30, 0.5, "s", "mdi:pause-circle-outline"),
-    Setting("timed_phase_seconds", 60, 10, 86400, 1, "s", "mdi:timer-cog-outline"),
+    Setting("timed_exhaust_seconds", 60, 10, 86400, 1, "s", "mdi:timer-arrow-up-outline"),
+    Setting("timed_intake_seconds", 60, 10, 86400, 1, "s", "mdi:timer-arrow-down-outline"),
     Setting("similar_band", 2.0, 0, 20, 0.1, "°C", "mdi:approximately-equal"),
     Setting("cold_threshold", -5, -40, 15, 0.5, "°C", "mdi:snowflake-thermometer"),
     Setting("cold_intake_max_seconds", 300, 10, 86400, 1, "s", "mdi:snowflake-alert"),
@@ -120,3 +121,28 @@ SETTINGS: tuple[Setting, ...] = (
 
 SETTINGS_BY_KEY: dict[str, Setting] = {s.key: s for s in SETTINGS}
 DEFAULTS: dict[str, float] = {s.key: s.default for s in SETTINGS}
+
+# Settings shown on the Replay device and Configure page, not with the cycle settings.
+REPLAY_KEYS = ("replay_hours", "replay_playback_seconds", "replay_frames")
+
+# Before 0.2.0 one "Timed phase" length served both phases; it seeds the two new ones.
+LEGACY_TIMED_PHASE = "timed_phase_seconds"
+
+# -- a linked unit: a second recuperator or a single fan, breathing opposite ------
+
+CONF_LINK_TYPE = "link_type"
+CONF_LINK_EXHAUST_SWITCH = "link_exhaust_switch"
+CONF_LINK_INTAKE_SWITCH = "link_intake_switch"
+
+LINK_NONE = "none"
+LINK_RECUPERATOR = "recuperator"  # its own exhaust and intake fans (biphasic)
+LINK_INTAKE_FAN = "intake_fan"  # one fan blowing outdoor air in
+LINK_EXHAUST_FAN = "exhaust_fan"  # one fan blowing indoor air out
+LINK_TYPES = [LINK_NONE, LINK_RECUPERATOR, LINK_INTAKE_FAN, LINK_EXHAUST_FAN]
+
+# What the linked unit is doing (the state of the "Linked unit" sensor).
+LINKED_EXHAUST = "exhaust"
+LINKED_INTAKE = "intake"
+LINKED_IDLE = "idle"
+LINKED_NOT_LINKED = "not_linked"
+LINKED_STATES = [LINKED_EXHAUST, LINKED_INTAKE, LINKED_IDLE, LINKED_NOT_LINKED]

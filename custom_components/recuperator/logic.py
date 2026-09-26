@@ -23,6 +23,7 @@ from dataclasses import dataclass, fields
 from .const import (
     DEFAULTS,
     FROST_FACE_TEMPERATURE,
+    LEGACY_TIMED_PHASE,
     MODE_EXHAUST_ONLY,
     MODE_INTAKE_ONLY,
     MODE_TIMED,
@@ -61,7 +62,8 @@ class Settings:
     min_phase_seconds: float = DEFAULTS["min_phase_seconds"]
     max_phase_seconds: float = DEFAULTS["max_phase_seconds"]
     pause_seconds: float = DEFAULTS["pause_seconds"]
-    timed_phase_seconds: float = DEFAULTS["timed_phase_seconds"]
+    timed_exhaust_seconds: float = DEFAULTS["timed_exhaust_seconds"]
+    timed_intake_seconds: float = DEFAULTS["timed_intake_seconds"]
     similar_band: float = DEFAULTS["similar_band"]
     cold_threshold: float = DEFAULTS["cold_threshold"]
     cold_intake_max_seconds: float = DEFAULTS["cold_intake_max_seconds"]
@@ -76,10 +78,19 @@ class Settings:
     def from_mapping(cls, values: dict) -> Settings:
         """Build from a dict of stored options, filling gaps with defaults."""
         own = {f.name for f in fields(cls)}
+        values = dict(values)
+        legacy = values.get(LEGACY_TIMED_PHASE)
+        if legacy is not None:  # stored before the two timed lengths existed
+            values.setdefault("timed_exhaust_seconds", legacy)
+            values.setdefault("timed_intake_seconds", legacy)
         return cls(
             **{k: float(values.get(k, v)) for k, v in DEFAULTS.items() if k in own},
             passive_intake=bool(values.get("passive_intake", False)),
         )
+
+    def timed_seconds(self, phase: str) -> float:
+        """The fixed length of a timed exhaust or intake phase."""
+        return self.timed_intake_seconds if phase == PHASE_INTAKE else self.timed_exhaust_seconds
 
 
 class BreathingLogic:
@@ -325,7 +336,7 @@ class BreathingLogic:
         if self.timed_reason != TIMED_NOT:
             if self.cold and self.phase == PHASE_INTAKE and elapsed >= s.cold_intake_max_seconds:
                 return REASON_COLD_LIMIT  # even timed intake respects the cold limit
-            length = s.passive_intake_max_seconds if passive else s.timed_phase_seconds
+            length = s.passive_intake_max_seconds if passive else s.timed_seconds(self.phase)
             return REASON_TIMED if elapsed >= length else None
 
         lower = s.min_phase_seconds

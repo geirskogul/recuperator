@@ -7,8 +7,8 @@ from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import SETTINGS, Setting
-from .entity import RecuperatorEntity
+from .const import REPLAY_KEYS, SETTINGS, Setting
+from .entity import REPLAY_DEVICE, RecuperatorEntity
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
@@ -22,7 +22,8 @@ class SettingNumber(RecuperatorEntity, NumberEntity):
     _attr_mode = NumberMode.BOX
 
     def __init__(self, controller, entry, setting: Setting) -> None:
-        super().__init__(controller, entry, setting.key)
+        device = REPLAY_DEVICE if setting.key in REPLAY_KEYS else None
+        super().__init__(controller, entry, setting.key, device)
         self._key = setting.key
         self._attr_native_min_value = setting.minimum
         self._attr_native_max_value = setting.maximum

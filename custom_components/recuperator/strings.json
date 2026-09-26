@@ -31,7 +31,8 @@
     },
     "error": {
       "same_switch": "The exhaust and intake fans must be different switches.",
-      "same_sensor": "The inside and outside probes must be different sensors."
+      "same_sensor": "The inside and outside probes must be different sensors.",
+      "fan_in_use": "This fan is already driven by another recuperator, or by this one's linked unit."
     },
     "abort": {
       "already_configured": "These fans are already used by another recuperator.",
@@ -45,8 +46,9 @@
         "description": "What would you like to change?",
         "menu_options": {
           "settings": "Settings",
-          "colours": "Diagram colours",
-          "replay": "Replay"
+          "link": "Linked unit",
+          "replay": "Replay",
+          "colours": "Diagram colours"
         }
       },
       "settings": {
@@ -59,7 +61,8 @@
           "min_phase_seconds": "Minimum phase",
           "max_phase_seconds": "Maximum phase",
           "pause_seconds": "Pause",
-          "timed_phase_seconds": "Timed phase",
+          "timed_exhaust_seconds": "Timed exhaust",
+          "timed_intake_seconds": "Timed intake",
           "similar_band": "Similar temperatures",
           "cold_threshold": "Cold threshold",
           "cold_intake_max_seconds": "Cold intake limit",
@@ -78,8 +81,9 @@
           "min_phase_seconds": "No exhaust or intake phase ends before this, whatever the probes say.",
           "max_phase_seconds": "No exhaust or powered intake phase runs longer than this (up to 24 hours).",
           "pause_seconds": "Both fans off for this long between phases, so a fan stops before the other starts.",
-          "timed_phase_seconds": "Length of each phase in Timed mode, and whenever the probes cannot be used (inside and outside too similar, or a probe unavailable).",
-          "similar_band": "If the two probes differ by less than this when a phase starts, that phase is timed instead (nothing to recover, e.g. mild weather or hose disconnected).",
+          "timed_exhaust_seconds": "Length of each exhaust phase in Timed mode, and whenever the probes cannot be used (inside and outside too similar, or a probe unavailable).",
+          "timed_intake_seconds": "Length of each intake phase in Timed mode, and whenever the probes cannot be used. The cold intake limit still applies; a passive intake uses Passive intake maximum instead.",
+          "similar_band": "If the two probes differ by less than this when a phase starts, that phase is timed instead, using Timed exhaust or Timed intake (nothing to recover, e.g. mild weather or hose disconnected).",
           "cold_threshold": "At or below this outdoor temperature, the cold-weather limits apply.",
           "cold_intake_max_seconds": "In cold weather, intake never runs longer than this. Allow enough time for fresh air to get through the ducting (several minutes with long hoses or slow fans); Maximum supply drop protects the room.",
           "cold_exhaust_extra_seconds": "In cold weather, exhaust runs at least as long as the last intake and at most this much longer.",
@@ -141,9 +145,23 @@
           "reset_colours": "Ignore the rows above and restore the weather-service colour scale."
         }
       },
+      "link": {
+        "title": "Linked unit",
+        "description": "A second unit that breathes together with this one, moving air the opposite way so the house stays balanced: while this recuperator exhausts, the linked unit takes air in, and while this one takes air in, the linked unit exhausts. It follows this recuperator's phases, pauses and mode. Saving restarts the recuperator.",
+        "data": {
+          "link_type": "Linked unit",
+          "link_exhaust_switch": "Linked exhaust fan (inside to outside)",
+          "link_intake_switch": "Linked intake fan (outside to inside)"
+        },
+        "data_description": {
+          "link_type": "Full recuperator: a second biphasic unit with its own exhaust and intake fans. Intake fan only: runs while this recuperator exhausts. Exhaust fan only: runs while this recuperator takes air in.",
+          "link_exhaust_switch": "Needed for a full recuperator or an exhaust fan. Ignored for an intake fan only.",
+          "link_intake_switch": "Needed for a full recuperator or an intake fan. Ignored for an exhaust fan only."
+        }
+      },
       "replay": {
         "title": "Replay",
-        "description": "Used by the Create replay button. Running the Create replay action with values saves them here too.",
+        "description": "Used by the Create button on the Replay device. Running the Create replay action with values saves them here too.",
         "data": {
           "replay_hours": "Replay hours",
           "replay_playback_seconds": "Replay playback length",
@@ -159,7 +177,11 @@
     "error": {
       "colour_missing": "Pick a colour for this stop, or clear its temperature.",
       "too_few_stops": "At least two stops are needed.",
-      "duplicate_temperature": "Two stops have the same temperature."
+      "duplicate_temperature": "Two stops have the same temperature.",
+      "link_fan_missing": "This kind of linked unit needs this fan.",
+      "link_fan_is_own": "This is one of this recuperator's own fans; pick the linked unit's fan.",
+      "fan_in_use": "This fan is already driven by another recuperator.",
+      "same_switch": "The linked exhaust and intake fans must be different switches."
     }
   },
   "entity": {
@@ -187,7 +209,7 @@
         "name": "Reset settings to defaults"
       },
       "create_replay": {
-        "name": "Create replay"
+        "name": "Create"
       }
     },
     "binary_sensor": {
@@ -220,8 +242,11 @@
       "pause_seconds": {
         "name": "Pause"
       },
-      "timed_phase_seconds": {
-        "name": "Timed phase"
+      "timed_exhaust_seconds": {
+        "name": "Timed exhaust"
+      },
+      "timed_intake_seconds": {
+        "name": "Timed intake"
       },
       "similar_band": {
         "name": "Similar temperatures"
@@ -248,13 +273,13 @@
         "name": "Passive inflow change"
       },
       "replay_hours": {
-        "name": "Replay hours"
+        "name": "Hours"
       },
       "replay_playback_seconds": {
-        "name": "Replay playback length"
+        "name": "Playback length"
       },
       "replay_frames": {
-        "name": "Replay frames"
+        "name": "Frames"
       }
     },
     "sensor": {
@@ -298,6 +323,15 @@
       },
       "passive_inflow_delay": {
         "name": "Passive inflow delay"
+      },
+      "linked_unit": {
+        "name": "Linked unit",
+        "state": {
+          "exhaust": "Exhaust",
+          "intake": "Intake",
+          "idle": "Idle",
+          "not_linked": "Not linked"
+        }
       }
     },
     "image": {
@@ -305,7 +339,7 @@
         "name": "Diagram"
       },
       "replay": {
-        "name": "Diagram replay"
+        "name": "Animation"
       }
     },
     "text": {
@@ -339,6 +373,16 @@
           "name": "Frames",
           "description": "Number of frames (0 = one per minute of history, 60 to 1440). Left out: the saved value."
         }
+      }
+    }
+  },
+  "selector": {
+    "link_type": {
+      "options": {
+        "none": "None",
+        "recuperator": "Full recuperator (exhaust and intake fans)",
+        "intake_fan": "Intake fan only",
+        "exhaust_fan": "Exhaust fan only"
       }
     }
   }
