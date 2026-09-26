@@ -286,7 +286,7 @@ The **Last change reason**, **Last exhaust**, **Last intake** and **Heat recover
 
 ## Diagram
 
-The **Diagram** image entity draws the recuperator as a pipe with pinched ends: the **inside** (room) end on the left, the **outside** end on the right. The inside of the pipe is filled with a gradient from the inside probe's temperature to the outside probe's, in colours approximating the U.S. National Weather Service temperature maps (purple for extreme cold, blues around freezing, greens, yellow, orange, red for heat). The current phase and the airflow direction are shown above it: exhaust flows left to right (inside to outside), intake right to left. It redraws when the phase changes, and when the probes change at most every 10 seconds. The gradient is drawn straight between the two probes; the real temperature inside the core is not measured.
+The **Diagram** image entity draws the recuperator as a pipe with pinched ends: the **inside** (room) end on the left, the **outside** end on the right. The inside of the pipe is filled with a gradient from the inside probe's temperature to the outside probe's, in colours approximating the U.S. National Weather Service temperature maps (purple for extreme cold, blues around freezing, greens, yellow, orange, red for heat). The two probe readings are shown in the pipe's ends, each on a fixed-size, half-transparent dark box so they stay readable on any colour. The current phase and the airflow direction are shown above it: exhaust flows left to right (inside to outside), intake right to left. It redraws when the phase changes, and when the probes change at most every 10 seconds. The gradient is drawn straight between the two probes; the real temperature inside the core is not measured.
 
 ![Winter example](docs/diagram-winter.svg)
 ![Summer example](docs/diagram-summer.svg)
@@ -316,9 +316,9 @@ show_state: false
 
 ## Replay: watch it breathe
 
-The action **Recuperator: Create replay** turns recorded history into an **animated diagram**. The gradient shifts through each breath, the inside and outside **temperatures** are shown under the two ends of the pipe as they were at each moment, the Exhaust/Intake label and arrow switch with each phase, and a marker moves along a timeline with the time of day under it. It loops, and needs nothing but a browser.
+The action **Recuperator: Create replay** turns recorded history into an **animated diagram**. The gradient shifts through each breath, the inside and outside **temperatures** are shown in the two ends of the pipe as they were at each moment, and the Exhaust/Intake label and arrow switch with each phase. Under the pipe, a **history graph** of the inside and outside probes covers the whole period, with a strip under it coloured by phase (like a history timeline), and a **cursor sweeps across it in step with the animation**, with the time of day above it and a dot on each line at the reading being shown. It loops, and needs nothing but a browser.
 
-Run it from Developer tools, Actions, or from an automation or script:
+The easiest way to make one is the [Replay card](#replay-card), which picks the period with Home Assistant's own date picker. Or run the action from Developer tools, Actions, or from an automation or script:
 
 ```yaml
 action: recuperator.create_replay
@@ -326,9 +326,25 @@ data:
   hours: 24              # how much history (0.25 to 168)
   playback_seconds: 60   # length of one loop
   # end: "2026-09-25 08:00:00"   # optional, default now
+  # start: "2026-09-24 08:00:00" # optional, instead of hours: replay start to end (up to 31 days)
   # frames: 0            # 0 = one per minute of history (60 to 1440)
   # config_entry_id: ...  # which recuperator; needed when there is more than one
 ```
+
+### Replay card
+
+The integration comes with a dashboard card for the replay. It has the **date and time range picker of Home Assistant's History page** (Today, Yesterday, This week, Last 24 hours, ... or any dates and times on its calendar), a **Create** button, and the replay under them. Pick a period, press Create, and the new replay appears when it is ready.
+
+```yaml
+type: custom:recuperator-replay-card
+entity: image.basement_breather_replay_animation   # the replay's Animation image
+# title: Replay              # optional card title
+# hours: 24                  # the period picked at first: the last 24 hours
+# playback_seconds: 60       # optional; like the action's value, it is saved
+# frames: 0                  # optional; like the action's value, it is saved
+```
+
+It is also in the dashboard editor's card list (search for *Recuperator replay*), filled in with your replay. The card's script is loaded by the integration; there is no resource to add. A picked period is replayed from start to end (up to 31 days) and, unlike *Hours*, is not saved: the Create button on the Replay device keeps using the saved *Hours*. If the History page's picker cannot be loaded (a much older or newer Home Assistant), the card shows plain date and time boxes instead.
 
 ### Replay settings
 
@@ -338,7 +354,7 @@ Everything about the replay lives on its own **Replay** device (*Basement Breath
 | --- | --- |
 | **Animation** (image) | The last replay |
 | **Create** (button) | Makes a new replay with the settings below |
-| **Hours** | How much history to replay (0.25–168 h, default 24) |
+| **Hours** | How much history to replay (0.25–168 h, default 24), up to now |
 | **Playback length** | Length of one loop (5–900 s, default 60) |
 | **Frames** | Frames per replay (0–1440; 0, the default, = one per minute of history) |
 

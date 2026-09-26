@@ -7,7 +7,17 @@ from datetime import datetime, timedelta
 import pytest
 
 from custom_components.recuperator.diagram import format_temperature, parse_palette, render_svg
-from custom_components.recuperator.replay import Frame, _runs, render_replay_svg, sample
+from custom_components.recuperator.replay import (
+    CHART_BOTTOM,
+    CHART_TOP,
+    Frame,
+    _held,
+    _line_path,
+    _runs,
+    _scale,
+    render_replay_svg,
+    sample,
+)
 
 
 def frames(n: int = 10) -> list[Frame]:
@@ -32,6 +42,15 @@ def test_diagram_shows_readings_in_display_unit() -> None:
     assert "Exhaust" in svg
 
 
+def test_diagram_readings_sit_in_boxes_in_the_pipe_ends() -> None:
+    svg = render_svg(5.0, 20.0, "exhaust")
+    # one half-opaque box per end, the reading centred in it
+    assert svg.count('fill="#000" fill-opacity="0.5"') == 2
+    assert '<text x="64" y="125" text-anchor="middle"' in svg
+    assert '<text x="576" y="125" text-anchor="middle"' in svg
+    assert 'y="206"' not in svg  # no longer under the pipe
+
+
 def test_palette_round_trip_and_errors() -> None:
     assert parse_palette("-10 #2f6fdc; 20 #f1e344") == ((-10.0, "#2f6fdc"), (20.0, "#f1e344"))
     with pytest.raises(ValueError):
@@ -50,6 +69,51 @@ def test_replay_shows_temperatures_and_clock() -> None:
     assert "14.0 °C" in svg  # last outside reading
     assert ">08:00<" in svg and ">08:09<" in svg
     assert svg.count("<animate") > 10
+
+
+def test_replay_readings_sit_in_boxes() -> None:
+    svg = render_replay_svg(frames(), 30)
+    assert svg.count('fill="#000" fill-opacity="0.5"') == 2
+    assert '<text x="64" y="135" text-anchor="middle"' in svg
+
+
+def test_replay_draws_a_history_graph_with_a_sweeping_cursor() -> None:
+    svg = render_replay_svg(frames(), 30)
+    assert svg.count('fill="none" stroke=') == 2  # the inside and outside lines
+    assert 'attributeName="transform" type="translate" from="0 0" to="540 0" dur="30s"' in svg
+    assert svg.count('attributeName="cy"') == 2  # a dot riding each line
+    assert ">Exhaust</text>" in svg and ">Intake</text>" in svg  # legend
+    assert ">5 °C</text>" in svg and ">20 °C</text>" in svg  # grid labels, every 5 °C
+
+
+def test_replay_graph_in_fahrenheit() -> None:
+    svg = render_replay_svg(frames(), 30, unit="°F")
+    assert "°F</text>" in svg
+
+
+def test_scale_covers_the_values_with_round_steps() -> None:
+    scale = _scale([-3.2, 21.4])
+    assert (scale.low, scale.high, scale.step) == (-10, 30, 10)
+    assert scale.y(scale.low) == CHART_BOTTOM and scale.y(scale.high) == CHART_TOP
+    flat = _scale([20.0, 20.0])
+    assert flat.high > flat.low
+    assert _scale([]).high > _scale([]).low
+
+
+def test_line_breaks_where_a_reading_is_missing() -> None:
+    path = _line_path([1.0, None, 2.0, 3.0], _scale([1.0, 3.0]))
+    assert path.count("M") == 2 and path.count("L") == 1
+
+
+def test_held_fills_gaps_with_the_last_reading() -> None:
+    assert _held([None, 1.0, None, 2.0]) == [1.0, 1.0, 1.0, 2.0]
+    assert _held([None, None]) == [None, None]
+
+
+def test_replay_without_readings_has_no_cursor_dots() -> None:
+    f = [Frame(x.when, None, None, x.phase) for x in frames()]
+    svg = render_replay_svg(f, 30)
+    assert 'attributeName="cy"' not in svg
 
 
 def test_replay_in_fahrenheit() -> None:
