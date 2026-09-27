@@ -58,6 +58,11 @@ from .drying import OFF as DRYING_IDLE, Drying, decide as decide_drying
 
 INSIDE = "inside"
 OUTSIDE = "outside"
+# An intake that ended for one of these ran the core out of heat (the air entering
+# the room got too cold). Its length says how much heat the exhaust before it
+# stored, not how much air came in, so Limited exhaust must not cut the next
+# exhaust to it (see BreathingLogic._limit_share).
+DRAINED_INTAKE = (REASON_SUPPLY_DROP, REASON_SUPPLY_COLD, REASON_COLD_LIMIT)
 _HISTORY_SECONDS = 900  # how much probe history to keep for the "settled" test
 _MIN_GAP = 0.1  # below this gap (°C) the recovered fraction is meaningless
 
@@ -136,6 +141,7 @@ class BreathingLogic:
         self.passive: bool = False  # the running (or last) intake is passive
         self.last_intake_passive: bool = False
         self.last_intake_limited: bool = False  # the last intake was cut short by the phase limit
+        self.last_intake_drained: bool = False  # the last intake ended because the core ran out of heat
         self.passive_flow: bool | None = None  # inflow seen during the running/last passive intake
         self.passive_flow_after_seconds: float | None = None
         self._intake_inside_start: float | None = None
@@ -366,6 +372,7 @@ class BreathingLogic:
                 self.last_intake_seconds = duration
                 self.last_intake_passive = self.passive
                 self.last_intake_limited = reason in (REASON_PHASE_LIMIT, REASON_DRYING)
+                self.last_intake_drained = reason in DRAINED_INTAKE
                 if outside is not None:
                     self.outdoor_estimate = outside
                 self._record_efficiency(now, inside)
@@ -498,6 +505,11 @@ class BreathingLogic:
         Limited intake, and drying, keep an intake shorter than the last exhaust
         (the smaller share wins); limited exhaust does the reverse. Passive
         intakes are neither limited nor used as a measure (the intake fan is off).
+
+        Limited exhaust skips the exhaust after an intake that ran the core out of
+        heat: that intake was short because the exhaust before it stored little
+        heat, so cutting the next exhaust to it would store even less, and the
+        breaths would shrink one after another down to the minimum phase.
         """
         shares: list[tuple[float, str]] = []
         if self.phase == PHASE_INTAKE and not passive:
@@ -505,9 +517,17 @@ class BreathingLogic:
                 shares.append((s.phase_limit_percent, REASON_PHASE_LIMIT))
             if self.drying.intake_share is not None:
                 shares.append((self.drying.intake_share, REASON_DRYING))
-        elif self.phase == PHASE_EXHAUST and s.phase_limit == LIMIT_EXHAUST and not self.last_intake_passive:
+        elif self.phase == PHASE_EXHAUST and s.phase_limit == LIMIT_EXHAUST and self.phase_limit_status(s) == "active":
             shares.append((s.phase_limit_percent, REASON_PHASE_LIMIT))
         return min(shares) if shares else (None, None)
+
+    def phase_limit_status(self, s: Settings) -> str:
+        """off, active, or paused: Limited exhaust waits out the exhaust after a drained or passive intake."""
+        if s.phase_limit == LIMIT_OFF:
+            return "off"
+        if s.phase_limit == LIMIT_EXHAUST and (self.last_intake_drained or self.last_intake_passive):
+            return "paused"
+        return "active"
 
     def _phase_limit(self, s: Settings, passive: bool) -> tuple[float | None, str | None]:
         """(the longest the running phase may last, why) under the phase limit or drying, if either applies.

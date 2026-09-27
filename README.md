@@ -159,6 +159,7 @@ A few things still come first:
 - **Minimum phase.** A limited phase always runs at least that long.
 - **Frost protection.** In cold weather the exhaust keeps running at least as long as the intake, so *Limited exhaust* pauses until it warms up.
 - **Passive intakes** are never limited.
+- **After an intake that ran out of heat,** Limited exhaust sits out one exhaust and lets it run by its own rules. That covers intakes ended by *Supply colder than room*, *Supply below floor* or *Cold limit*. Such an intake was short because the core had little heat to give. Cutting the next exhaust to match would store even less, and the breaths would shrink one after another down to *Minimum phase*. The Phase sensor's `phase_limit` attribute shows `paused` when this happens.
 
 ### Passive intake
 
@@ -256,6 +257,7 @@ The replay has its own small **Replay** device, listed under *Connected devices*
 
 ## Recent changes
 
+- **0.5.6.** Fixes a second feedback loop. With *Limited exhaust* on, when intakes ended because the core ran out of heat, each exhaust was cut to the shortened intake before it, and the breaths shrank to *Minimum phase* and stayed there. Limited exhaust now sits out the exhaust after such an intake.
 - **0.5.5.**
   - **Heat recovery** is now the real temperature efficiency: steady, and higher when the core does better. The old number is the diagnostic *Core used*.
   - Optional **room and outdoor sensors**; the outdoor ones can be a weather entity.
