@@ -30,6 +30,16 @@ CONF_OUTSIDE_SENSOR = "outside_sensor"  # probe at the outdoor end of the core
 CONF_PASSIVE_INTAKE = "passive_intake"  # intake with the intake fan off (passive re-ventilation)
 CONF_PALETTE = "diagram_palette"  # the diagram's colour scale, as text (see diagram.py)
 CONF_PHASE_LIMIT = "phase_limit"  # keep one phase shorter than the other (see PHASE_LIMITS)
+CONF_DRYING = "drying"  # lean towards exhaust while the room is too humid
+CONF_DRYING_EXHAUST_ONLY = "drying_exhaust_only"  # ...and run Exhaust only when very humid
+
+# Optional sensors for the room and the outdoors (Configure, Room and outdoor sensors).
+# The outdoor ones may also be a weather entity.
+CONF_ROOM_TEMPERATURE = "room_temperature_sensor"
+CONF_OUTDOOR_TEMPERATURE = "outdoor_temperature_sensor"
+CONF_ROOM_HUMIDITY = "room_humidity_sensor"
+CONF_OUTDOOR_HUMIDITY = "outdoor_humidity_sensor"
+AMBIENT_KEYS = (CONF_ROOM_TEMPERATURE, CONF_OUTDOOR_TEMPERATURE, CONF_ROOM_HUMIDITY, CONF_OUTDOOR_HUMIDITY)
 
 # Every entity a recuperator is wired to (kept up to date when one is renamed).
 WIRING_KEYS = (
@@ -39,6 +49,7 @@ WIRING_KEYS = (
     CONF_OUTSIDE_SENSOR,
     "link_exhaust_switch",
     "link_intake_switch",
+    *AMBIENT_KEYS,
 )
 
 
@@ -80,6 +91,7 @@ REASON_TIMED = "timed"  # timed breathing: the fixed phase length ran out
 REASON_SUPPLY_DROP = "supply_drop"  # air entering the room fell too far below room temperature
 REASON_SUPPLY_COLD = "supply_cold"  # air entering the room got colder than the hard floor
 REASON_PHASE_LIMIT = "phase_limit"  # the phase limit kept it shorter than the other phase
+REASON_DRYING = "drying"  # drying kept the intake shorter than the exhaust
 REASON_STARTED = "started"  # breathing was switched on
 REASON_STOPPED = "stopped"  # breathing was switched off
 REASONS = [
@@ -91,12 +103,38 @@ REASONS = [
     REASON_SUPPLY_DROP,
     REASON_SUPPLY_COLD,
     REASON_PHASE_LIMIT,
+    REASON_DRYING,
     REASON_STARTED,
     REASON_STOPPED,
 ]
 
 STARTUP_WAIT_SECONDS = 60  # wait this long for the probes after switching on / a restart
 FROST_FACE_TEMPERATURE = 0.5  # outdoor face never above this during a cold exhaust = frost risk
+
+# -- drying (the state of the "Drying" sensor) -----------------------------------
+
+DRYING_OFF = "off"  # the Drying switch is off
+DRYING_NO_SENSOR = "no_humidity_sensor"  # no room humidity reading
+DRYING_BELOW_TARGET = "below_target"  # the room is dry enough
+DRYING_ROOM_COLD = "room_too_cold"  # the room is below the drying room minimum
+DRYING_OUTDOOR_HUMID = "outdoor_too_humid"  # outdoor air holds as much water as indoor air
+DRYING_ACTIVE = "drying"  # leaning towards exhaust
+DRYING_EXHAUST_ONLY = "exhaust_only"  # very humid: exhaust only
+DRYING_STATES = [
+    DRYING_OFF,
+    DRYING_NO_SENSOR,
+    DRYING_BELOW_TARGET,
+    DRYING_ROOM_COLD,
+    DRYING_OUTDOOR_HUMID,
+    DRYING_ACTIVE,
+    DRYING_EXHAUST_ONLY,
+]
+DRYING_HYSTERESIS = 3.0  # % RH below the exhaust-only humidity before normal breathing resumes
+
+# -- heat recovery -------------------------------------------------------------------
+
+EFFICIENCY_BREATHS = 5  # the Heat recovery sensor averages this many intakes
+EFFICIENCY_MIN_GAP = 2.0  # °C between room and outdoors below which efficiency is not judged
 
 # -- why a phase is timed instead of temperature-driven ------------------------
 
@@ -153,6 +191,15 @@ SETTINGS: tuple[Setting, ...] = (
     Setting("passive_intake_max_seconds", 1800, 60, 86400, 60, "s", "mdi:timer-sand-complete"),
     Setting("passive_flow_delta", 0.3, 0.05, 5, 0.05, C, "mdi:weather-windy", advanced=True),
     Setting("phase_limit_percent", 90, 10, 100, 1, "%", "mdi:scale-unbalanced"),
+    # Drying (needs a room humidity sensor)
+    Setting("target_humidity", 60, 30, 90, 1, "%", "mdi:water-percent"),
+    Setting("drying_band", 10, 2, 30, 1, "%", "mdi:water-plus-outline", advanced=True),
+    Setting("drying_min_intake_share", 50, 10, 100, 1, "%", "mdi:arrow-down-bold-circle-outline", advanced=True),
+    Setting("drying_exhaust_only_humidity", 75, 40, 100, 1, "%", "mdi:water-alert-outline"),
+    Setting(
+        "drying_min_room_temperature", 10, 0, 25, 0.5, C, "mdi:home-thermometer",
+        temperature=True, advanced=True,
+    ),
     # Replay: used by the Create replay button, and saved from the last Create replay action.
     Setting("replay_hours", 24, 0.25, 168, 0.25, "h", "mdi:history"),
     Setting("replay_playback_seconds", 60, 5, 900, 1, "s", "mdi:play-speed"),

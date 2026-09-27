@@ -47,6 +47,9 @@ def _logic_state(logic) -> dict[str, Any]:
         "basement_estimate": logic.basement_estimate,
         "outdoor_estimate": logic.outdoor_estimate,
         "last_recovery_percent": logic.last_recovery_percent,
+        "heat_recovery": logic.heat_recovery,
+        "heat_recovery_samples": logic.heat_recovery_samples,
+        "drying": {"status": logic.drying.status, "intake_share": logic.drying.intake_share, "exhaust_only": logic.drying.exhaust_only},
         "cold": logic.cold,
         "frost_risk": logic.frost_risk,
         "passive": logic.passive,
@@ -82,6 +85,14 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry) -> dict
         "probes": {
             "inside": _entity_state(hass, controller.inside_sensor),
             "outside": _entity_state(hass, controller.outside_sensor),
+        },
+        # The optional room and outdoor sensors, as read (°C, % RH) and as Home Assistant has them.
+        "ambient": vars(controller.ambient()),
+        "ambient_sensors": {
+            "room_temperature": _entity_state(hass, controller.room_temperature_sensor),
+            "outdoor_temperature": _entity_state(hass, controller.outdoor_temperature_sensor),
+            "room_humidity": _entity_state(hass, controller.room_humidity_sensor),
+            "outdoor_humidity": _entity_state(hass, controller.outdoor_humidity_sensor),
         },
         "fans": fans,
         "logic": _logic_state(controller.logic),

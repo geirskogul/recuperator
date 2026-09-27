@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 from custom_components.recuperator.const import (
     PHASE_EXHAUST,
     PHASE_INTAKE,
@@ -212,3 +214,106 @@ def test_limited_intake_in_the_cold_does_not_shrink_the_phases() -> None:
     assert logic.last_exhaust_seconds == 100  # still the full Maximum phase
     assert logic.last_intake_seconds == 50
     assert logic.last_intake_limited
+
+
+# -- heat recovery, room and outdoor sensors, drying ------------------------------------
+
+from custom_components.recuperator.ambient import Ambient  # noqa: E402
+
+
+def test_heat_recovery_is_the_supply_temperature_efficiency() -> None:
+    """Room 20, outdoor 0; supply air at 15 for the whole intake: 75 % recovered."""
+    s = Settings.from_mapping({"timed_exhaust_seconds": 30, "timed_intake_seconds": 30, "pause_seconds": 1})
+    logic = BreathingLogic()
+    logic.ambient = Ambient(room_temperature=20.0, outdoor_temperature=0.0)
+
+    def probes(_t, phase):
+        return (15.0, 0.0) if phase == PHASE_INTAKE else (20.0, 10.0)
+
+    logic.start(0, "timed", s, 20.0, 10.0)
+    run(logic, "timed", s, 1, 200, probes)
+    assert logic.heat_recovery == pytest.approx(75, abs=2)  # the first second still reads room air
+    assert logic.last_recovery_percent is None  # Core used: only for probe-driven phases
+
+
+def test_heat_recovery_averages_over_the_intake() -> None:
+    """Supply falls from 20 to 10 during a 40 s intake: the average (about 15) counts, not the end."""
+    s = Settings.from_mapping({"timed_exhaust_seconds": 30, "timed_intake_seconds": 40, "max_supply_drop": 20})
+    logic = BreathingLogic()
+    logic.ambient = Ambient(room_temperature=20.0, outdoor_temperature=0.0)
+    started = {}
+
+    def probes(t, phase):
+        if phase != PHASE_INTAKE:
+            started.pop("intake", None)
+            return 20.0, 10.0
+        start = started.setdefault("intake", t)
+        return 20.0 - (t - start) / 4, 0.0
+
+    logic.start(0, "timed", s, 20.0, 10.0)
+    run(logic, "timed", s, 1, 75, probes)
+    assert logic.heat_recovery == pytest.approx(75, abs=4)
+
+
+def test_heat_recovery_not_judged_when_room_and_outdoors_are_alike() -> None:
+    s = Settings.from_mapping({"timed_exhaust_seconds": 30, "timed_intake_seconds": 30})
+    logic = BreathingLogic()
+    logic.ambient = Ambient(room_temperature=20.0, outdoor_temperature=19.0)
+    logic.start(0, "timed", s, 20.0, 19.0)
+    run(logic, "timed", s, 1, 200, steady(20.0, 19.0))
+    assert logic.heat_recovery is None
+
+
+def test_outdoor_sensor_decides_cold_weather() -> None:
+    s = Settings.from_mapping({"cold_threshold": -5})
+    logic = BreathingLogic()
+    logic.ambient = Ambient(outdoor_temperature=-12.0)
+    logic.start(0, "automatic", s, 20.0, 5.0)
+    run(logic, "automatic", s, 1, 5, steady(20.0, 5.0))  # exhaust: the probes say nothing about outdoors
+    assert logic.cold
+
+
+def test_room_and_outdoor_sensors_decide_similar_temperatures() -> None:
+    s = Settings.from_mapping({"similar_band": 2.0})
+    logic = BreathingLogic()
+    logic.ambient = Ambient(room_temperature=18.0, outdoor_temperature=17.0)
+    logic.start(0, "automatic", s, 20.0, 5.0)  # probes far apart, but the air is alike
+    assert logic.timed_reason == TIMED_SIMILAR
+
+
+def test_drying_shortens_intakes() -> None:
+    """Room at 70 % with a 60 % target and 10 % range: intakes get half the exhaust."""
+    s = Settings.from_mapping(
+        {"drying": True, "timed_exhaust_seconds": 60, "timed_intake_seconds": 60, "drying_min_intake_share": 50}
+    )
+    logic = BreathingLogic()
+    logic.ambient = Ambient(room_humidity=70.0)
+    logic.update_drying(s)
+    assert logic.drying.status == "drying"
+    logic.start(0, "timed", s, 20, 5)
+    run(logic, "timed", s, 1, 200, steady(20, 5))
+    assert logic.last_intake_seconds == 30
+    assert logic.last_intake_limited
+
+
+def test_drying_can_run_exhaust_only_and_hand_back() -> None:
+    s = Settings.from_mapping({"drying": True, "drying_exhaust_only": True, "timed_exhaust_seconds": 30})
+    logic = BreathingLogic()
+
+    def humidity(value: float) -> None:
+        logic.ambient = Ambient(room_humidity=value)
+        logic.update_drying(s)
+
+    humidity(55.0)  # below target: normal timed breathing
+    logic.start(0, "timed", s, 20, 5)
+    run(logic, "timed", s, 1, 40, steady(20, 5))
+    assert logic.phase == PHASE_INTAKE
+
+    humidity(85.0)  # very humid: the intake is ended and exhaust runs on
+    run(logic, "timed", s, 41, 300, steady(20, 5))
+    assert logic.phase == PHASE_EXHAUST
+    assert logic.last_reason == "drying"
+
+    humidity(55.0)  # dry again: breathing resumes
+    changes = run(logic, "timed", s, 341, 100, steady(20, 5))
+    assert PHASE_INTAKE in [phase for _t, phase in changes]

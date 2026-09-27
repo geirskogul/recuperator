@@ -74,7 +74,7 @@ async def test_reconfigure_updates_wiring_and_unique_id(hass: HomeAssistant, ent
 async def _open_options(hass: HomeAssistant, entry, step: str):
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["type"] is FlowResultType.MENU
-    assert set(result["menu_options"]) == {"settings", "link", "replay", "colours"}
+    assert set(result["menu_options"]) == {"settings", "sensors", "link", "replay", "colours"}
     return await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": step})
 
 

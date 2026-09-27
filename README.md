@@ -22,6 +22,7 @@ A temperature probe at each end of the core tells the integration when a breath 
 - **Two fans on their own switches.** One blows air out (exhaust), the other blows air in (intake). Any `switch`, `fan`, `light` or `input_boolean` works, for example the two outlets of a smart plug.
 - **Two temperature probes in the airflow**, one at each end of the core. The *inside probe* sits at the room end and the *outside probe* at the outdoor end. DS18B20 probes on an ESP32 with ESPHome work well. Have them report every couple of seconds, because a breath only lasts tens of seconds to a few minutes. °C, °F and K are all fine.
 - Home Assistant 2025.2 or newer.
+- **Optional:** room and outdoor temperature and humidity sensors (the outdoor ones can be a weather entity). See [Room and outdoor sensors](#room-and-outdoor-sensors) and [Drying](#drying).
 
 ## Getting started
 
@@ -50,6 +51,20 @@ No breath ever ends before **Minimum phase** (20 s), which protects the fans and
 When the probes can't help, the phases simply run for fixed times (**Timed exhaust** and **Timed intake**, 60 s each). That happens in *Timed* mode, when a probe is offline, and when inside and outside are within **Similar temperatures** (2 °C) of each other, so there's nothing to recover.
 
 **Last change reason** always says why the last breath ended. Together with **Last exhaust**, **Last intake** and **Heat recovery**, it's the quickest way to see what the cycle is up to.
+
+### Heat recovery
+
+**Heat recovery** is the share of the indoor–outdoor temperature gap that the core gives back to the incoming air:
+
+> (supply air − outdoor) ÷ (room − outdoor)
+
+- **Supply air** is the inside probe during an intake. It's averaged over the whole intake, not taken at the end.
+- **Room and outdoor** come from your [room and outdoor sensors](#room-and-outdoor-sensors) if you have them, and otherwise from the temperatures learned from the probes.
+- The sensor shows the **average of the last 5 intakes**. It reads *unknown* while the room and outdoors are within 2 °C of each other, because a tiny gap makes the figure meaningless.
+
+For example, 70 % on a 0 °C day in a 20 °C room means the air coming in arrived at 14 °C on average.
+
+The diagnostic **Core used** shows how far the far end of the core moved in the last phase. That's the number the *Recovery target* is compared with. Up to 0.5.1 it was shown as "Heat recovery", which is why that number used to swing so much: it depended on why each phase ended.
 
 ### Recovery target
 
@@ -89,7 +104,8 @@ Everything lives on one device:
   - *Automatic*: the normal probe-driven cycle.
   - *Timed*: fixed lengths, which is handy for testing or with unreliable probes.
   - *Exhaust only* or *Intake only*: runs one fan continuously, for example to dry the room out fast.
-- **Phase**, **Last change reason**, **Last exhaust**, **Last intake**, **Heat recovery**, and the learned **Basement temperature** and **Outdoor temperature**.
+- **Phase**, **Last change reason**, **Last exhaust**, **Last intake**, **Heat recovery**, and the learned **Basement temperature** and **Outdoor temperature** (the probes' readings at the end of each exhaust and intake).
+- **Drying**, which says what drying is doing (see [Drying](#drying)), and **Room / Outdoor absolute humidity** in g/m³ when you've added humidity sensors.
 - **Cold weather** and **Frost risk** indicators.
 - A live **Diagram** of the pipe (see below).
 - **Every setting** as a number, so you can put them on a dashboard. The less common ones start hidden.
@@ -101,6 +117,38 @@ Breathing, Mode and the learned temperatures all survive a restart. After a rest
 To start over, the **Reset settings to defaults** button resets all the settings and the diagram colours. It never touches your fans, probes, Breathing, Mode or a linked unit.
 
 ## Extras
+
+### Room and outdoor sensors
+
+The integration can work without them: between breaths, it learns the room and outdoor temperatures from the probes. If you have real sensors, add them under **Configure**, **Room and outdoor sensors**. All four are optional:
+
+| Sensor | What it's used for |
+| --- | --- |
+| **Room temperature** | The room reference for *Maximum supply drop*, *Similar temperatures*, *Heat recovery* and the drying room minimum |
+| **Room humidity** | [Drying](#drying) |
+| **Outdoor temperature** (a sensor or a weather entity) | Deciding cold weather, *Similar temperatures*, and the outdoor reference for *Heat recovery* |
+| **Outdoor humidity** (a sensor or a weather entity) | Lets drying stand down when the outdoor air is wetter than the room's |
+
+A few notes:
+- **Where to put the room sensor.** Place it at the same height as the core's room end. Air higher up is warmer, which makes the supply air look colder by comparison and ends intakes sooner.
+- **What the probes still decide.** When a phase has *Recovered* is still judged by the probes, because they read the air actually reaching the core. A hose warmed by the basement means that air isn't quite the outdoor temperature.
+- **Unavailable sensors.** If a sensor goes offline, the learned value takes over until it's back.
+- **Weather entities** are less timely than a local sensor, but good enough for these decisions.
+
+### Drying
+
+For a damp room, add a room humidity sensor and turn on **Drying**. While the room is above **Target humidity** (60 %), breathing leans towards exhaust: intakes are kept shorter than the exhaust before them.
+
+- **How strongly it leans.** At the target, intakes are unchanged. At **Drying range** (10 %) above it, intakes get only **Drying intake share** (50 %) of the exhaust. In between, it slides smoothly.
+- **Escalating to Exhaust only.** Turn on **Drying exhaust only** to let drying switch to *Exhaust only* once the room reaches **Exhaust-only humidity** (75 %). It switches back when the room is 3 % below that.
+
+With the fans running most of the time, the air moved per hour is roughly fixed. So drying can't breathe faster; it shifts the balance towards blowing air out.
+
+Drying stands down, and the **Drying** sensor says why, when:
+- **The room is colder than *Drying room minimum*** (10 °C), so drying never chills the room in winter.
+- **The outdoor air holds as much water as the room's.** On a muggy summer day, ventilating would only bring more water in. This check needs the outdoor temperature and humidity. It compares the water vapour pressure rather than g/m³, because cold air is denser: near the break-even point, cold outdoor air can hold more grams per cubic metre and still dry a warm room once it has warmed up.
+
+The draught and frost protections still come first, and intakes a drying lean cuts short end with the reason *Drying*.
 
 ### Phase limit
 
@@ -208,6 +256,10 @@ The replay has its own small **Replay** device, listed under *Connected devices*
 
 ## Recent changes
 
+- **0.6.0.**
+  - **Heat recovery** is now the real temperature efficiency: steady, and higher when the core does better. The old number is the diagnostic *Core used*.
+  - Optional **room and outdoor sensors**; the outdoor ones can be a weather entity.
+  - **Drying**, with a room humidity sensor.
 - **0.5.1.** Fixes a feedback loop: with *Limited intake* on in cold weather, the breaths could shrink one after another down towards *Minimum phase*. The frost rule now keeps each exhaust at least as long as the intake, without also holding it to the shortened intake.
 - **0.5.0.** Adds the [Phase limit](#phase-limit).
 - **0.4.0.** The readings moved into the pipe's ends. Replays gained the sweeping history graph, and the replay card arrived. Refresh your browser once after updating so the card loads.
