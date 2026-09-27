@@ -20,13 +20,17 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass, fields
 
+from .ambient import Ambient
 from .const import (
     DEFAULTS,
+    EFFICIENCY_BREATHS,
+    EFFICIENCY_MIN_GAP,
     FROST_FACE_TEMPERATURE,
     LEGACY_TIMED_PHASE,
     LIMIT_EXHAUST,
     LIMIT_INTAKE,
     LIMIT_OFF,
+    MODE_AUTOMATIC,
     MODE_EXHAUST_ONLY,
     MODE_INTAKE_ONLY,
     MODE_TIMED,
@@ -35,6 +39,7 @@ from .const import (
     PHASE_PAUSE,
     PHASE_STOPPED,
     REASON_COLD_LIMIT,
+    REASON_DRYING,
     REASON_MAX_TIME,
     REASON_PHASE_LIMIT,
     REASON_RECOVERED,
@@ -49,6 +54,7 @@ from .const import (
     TIMED_SENSOR,
     TIMED_SIMILAR,
 )
+from .drying import OFF as DRYING_IDLE, Drying, decide as decide_drying
 
 INSIDE = "inside"
 OUTSIDE = "outside"
@@ -77,8 +83,15 @@ class Settings:
     passive_intake_max_seconds: float = DEFAULTS["passive_intake_max_seconds"]
     passive_flow_delta: float = DEFAULTS["passive_flow_delta"]
     phase_limit_percent: float = DEFAULTS["phase_limit_percent"]
+    target_humidity: float = DEFAULTS["target_humidity"]
+    drying_band: float = DEFAULTS["drying_band"]
+    drying_min_intake_share: float = DEFAULTS["drying_min_intake_share"]
+    drying_exhaust_only_humidity: float = DEFAULTS["drying_exhaust_only_humidity"]
+    drying_min_room_temperature: float = DEFAULTS["drying_min_room_temperature"]
     passive_intake: bool = False
     phase_limit: str = LIMIT_OFF
+    drying: bool = False
+    drying_exhaust_only: bool = False
 
     @classmethod
     def from_mapping(cls, values: dict) -> Settings:
@@ -93,6 +106,8 @@ class Settings:
             **{k: float(values.get(k, v)) for k, v in DEFAULTS.items() if k in own},
             passive_intake=bool(values.get("passive_intake", False)),
             phase_limit=str(values.get("phase_limit", LIMIT_OFF)),
+            drying=bool(values.get("drying", False)),
+            drying_exhaust_only=bool(values.get("drying_exhaust_only", False)),
         )
 
     def timed_seconds(self, phase: str) -> float:
@@ -130,6 +145,72 @@ class BreathingLogic:
             INSIDE: deque(),
             OUTSIDE: deque(),
         }
+        # The optional room and outdoor sensors (set by the controller each tick).
+        self.ambient: Ambient = Ambient()
+        self.drying: Drying = DRYING_IDLE
+        # Heat recovery: the supply air (inside probe) averaged over each intake.
+        self._efficiencies: deque[float] = deque(maxlen=EFFICIENCY_BREATHS)
+        self._supply_sum = 0.0
+        self._supply_seconds = 0.0
+        self._supply_last: tuple[float, float] | None = None
+
+    # -- the room and the outdoors ------------------------------------------------
+
+    def room_air(self) -> float | None:
+        """The room's temperature: the room sensor if there is one, else the learned value."""
+        if self.ambient.room_temperature is not None:
+            return self.ambient.room_temperature
+        return self.basement_estimate
+
+    def outdoor_air(self) -> float | None:
+        """The outdoor temperature: the outdoor sensor if there is one, else the learned value."""
+        if self.ambient.outdoor_temperature is not None:
+            return self.ambient.outdoor_temperature
+        return self.outdoor_estimate
+
+    def update_drying(self, s: Settings) -> None:
+        """Decide what drying wants from the latest readings."""
+        self.drying = decide_drying(s, self.ambient, self.room_air(), self.drying.exhaust_only)
+
+    def _effective_mode(self, mode: str) -> str:
+        """Drying can turn Automatic or Timed breathing into Exhaust only while the room is very humid."""
+        if self.drying.exhaust_only and mode in (MODE_AUTOMATIC, MODE_TIMED):
+            return MODE_EXHAUST_ONLY
+        return mode
+
+    # -- heat recovery -------------------------------------------------------------
+
+    @property
+    def heat_recovery(self) -> float | None:
+        """How much of the room-outdoor gap the core gave back to incoming air (%), over the last few intakes."""
+        if not self._efficiencies:
+            return None
+        return sum(self._efficiencies) / len(self._efficiencies)
+
+    @property
+    def heat_recovery_samples(self) -> list[float]:
+        """The intakes the Heat recovery sensor averages (%), oldest first."""
+        return list(self._efficiencies)
+
+    def _sample_supply(self, now: float, inside: float | None) -> None:
+        """Add the supply air since the last sample to the running intake average (time-weighted)."""
+        if self._supply_last is not None:
+            then, value = self._supply_last
+            self._supply_sum += value * (now - then)
+            self._supply_seconds += now - then
+        self._supply_last = None if inside is None else (now, inside)
+
+    def _record_efficiency(self, now: float, inside: float | None) -> None:
+        """At the end of a powered intake: (supply - outdoor) / (room - outdoor), averaged over the intake."""
+        self._sample_supply(now, inside)
+        room, outdoor = self.room_air(), self.outdoor_air()
+        if self.passive or self._supply_seconds <= 0 or room is None or outdoor is None:
+            return
+        if abs(room - outdoor) < EFFICIENCY_MIN_GAP:
+            return  # too little difference to judge
+        supply = self._supply_sum / self._supply_seconds
+        efficiency = (supply - outdoor) / (room - outdoor)
+        self._efficiencies.append(min(max(efficiency, 0.0), 1.0) * 100)
 
     # -- probe history ---------------------------------------------------------
 
@@ -195,6 +276,8 @@ class BreathingLogic:
         self._far_start = far
         if phase == PHASE_INTAKE:
             self._intake_inside_start = inside
+            self._supply_sum, self._supply_seconds = 0.0, 0.0
+            self._supply_last = None if inside is None else (now, inside)
             self.passive = s.passive_intake
             if self.passive:
                 self.passive_flow = False
@@ -209,10 +292,12 @@ class BreathingLogic:
         which after a good phase is close to the other side's air. So once both
         have been measured, use the basement temperature (inside probe at the end
         of the last exhaust) and the outdoor temperature (outside probe at the end
-        of the last intake). Only the very first phases fall back to the live probes.
+        of the last intake), or the room and outdoor sensors where set up. Only
+        the very first phases fall back to the live probes.
         """
-        if self.basement_estimate is not None and self.outdoor_estimate is not None:
-            return abs(self.basement_estimate - self.outdoor_estimate)
+        room, outdoor = self.room_air(), self.outdoor_air()
+        if room is not None and outdoor is not None:
+            return abs(room - outdoor)
         return abs(inside - outside)
 
     @staticmethod
@@ -226,6 +311,9 @@ class BreathingLogic:
         """Advance the cycle. Returns True if the phase changed."""
         if self.phase == PHASE_STOPPED:
             return False
+        chosen, mode = mode, self._effective_mode(mode)
+        if self.phase == PHASE_INTAKE:
+            self._sample_supply(now, inside)
 
         # Continuous modes: one fan runs all the time.
         if mode in (MODE_EXHAUST_ONLY, MODE_INTAKE_ONLY):
@@ -234,7 +322,8 @@ class BreathingLogic:
                 self.phase == wanted or self.next_phase == wanted
             ):
                 return self._maybe_leave_pause(now, mode, s, inside, outside)
-            self._end(now, REASON_STARTED, inside, outside, next_phase=wanted)
+            reason = REASON_DRYING if mode != chosen else REASON_STARTED
+            self._end(now, reason, inside, outside, next_phase=wanted)
             return True
 
         if self.phase == PHASE_PAUSE:
@@ -276,9 +365,10 @@ class BreathingLogic:
             else:
                 self.last_intake_seconds = duration
                 self.last_intake_passive = self.passive
-                self.last_intake_limited = reason == REASON_PHASE_LIMIT
+                self.last_intake_limited = reason in (REASON_PHASE_LIMIT, REASON_DRYING)
                 if outside is not None:
                     self.outdoor_estimate = outside
+                self._record_efficiency(now, inside)
             ref, far = self._ref_far(self.phase, inside, outside)
             if self.timed_reason == TIMED_NOT and ref is not None and far is not None:
                 self.last_recovery_percent = self._recovered(ref, far) * 100
@@ -308,7 +398,9 @@ class BreathingLogic:
         return (far - self._far_start) / gap
 
     def _is_cold(self, s: Settings, outside) -> bool:
-        """Is it cold outdoors? During intake the outside probe reads outdoor air."""
+        """Is it cold outdoors? An outdoor sensor knows; otherwise, during intake, the outside probe reads outdoor air."""
+        if self.ambient.outdoor_temperature is not None:
+            return self.ambient.outdoor_temperature <= s.cold_threshold
         if self.phase == PHASE_INTAKE and outside is not None:
             return outside <= s.cold_threshold
         if self.outdoor_estimate is not None:
@@ -333,7 +425,9 @@ class BreathingLogic:
         # the intake if that air has fallen more than max_supply_drop below room
         # temperature, or below the optional hard floor. Applies in every mode.
         if self.phase == PHASE_INTAKE and inside is not None and elapsed >= s.min_phase_seconds:
-            room = self.basement_estimate if self.basement_estimate is not None else self._intake_inside_start
+            room = self.room_air()
+            if room is None:
+                room = self._intake_inside_start
             if room is not None and inside < room - s.max_supply_drop:
                 return REASON_SUPPLY_DROP
             if inside < s.min_supply_temperature:
@@ -345,9 +439,9 @@ class BreathingLogic:
         if self.timed_reason != TIMED_NOT:
             if self.cold and self.phase == PHASE_INTAKE and elapsed >= s.cold_intake_max_seconds:
                 return REASON_COLD_LIMIT  # even timed intake respects the cold limit
-            limit = self._phase_limit(s, passive)
+            limit, limit_reason = self._phase_limit(s, passive)
             if limit is not None and elapsed >= limit:
-                return REASON_PHASE_LIMIT
+                return limit_reason
             length = s.passive_intake_max_seconds if passive else s.timed_seconds(self.phase)
             return REASON_TIMED if elapsed >= length else None
 
@@ -373,9 +467,9 @@ class BreathingLogic:
                 if cold_cap < cap:
                     cap, cap_reason = cold_cap, REASON_COLD_LIMIT
             lower = min(max(lower, self.last_intake_seconds), cap)
-        limit = None if cold_exhaust else self._phase_limit(s, passive)
+        limit, limit_reason = (None, None) if cold_exhaust else self._phase_limit(s, passive)
         if limit is not None and limit < cap:
-            cap, cap_reason = limit, REASON_PHASE_LIMIT
+            cap, cap_reason = limit, limit_reason
 
         if elapsed >= cap:
             return cap_reason
@@ -398,23 +492,35 @@ class BreathingLogic:
             return REASON_SETTLED
         return None
 
-    def _phase_limit(self, s: Settings, passive: bool) -> float | None:
-        """The longest the running phase may last under the phase limit, if one applies.
+    def _limit_share(self, s: Settings, passive: bool) -> tuple[float | None, str | None]:
+        """(share of the other phase's last length in %, reason) for the running phase, if limited.
 
-        Limited intake: an intake lasts at most phase_limit_percent of the last
-        exhaust; limited exhaust: the other way round. Passive intakes are neither
-        limited nor used as a measure (the intake fan is off). Never below the
-        minimum phase, which protects the fans and relays.
+        Limited intake, and drying, keep an intake shorter than the last exhaust
+        (the smaller share wins); limited exhaust does the reverse. Passive
+        intakes are neither limited nor used as a measure (the intake fan is off).
         """
-        if self.phase == PHASE_INTAKE and s.phase_limit == LIMIT_INTAKE and not passive:
-            other = self.last_exhaust_seconds
+        shares: list[tuple[float, str]] = []
+        if self.phase == PHASE_INTAKE and not passive:
+            if s.phase_limit == LIMIT_INTAKE:
+                shares.append((s.phase_limit_percent, REASON_PHASE_LIMIT))
+            if self.drying.intake_share is not None:
+                shares.append((self.drying.intake_share, REASON_DRYING))
         elif self.phase == PHASE_EXHAUST and s.phase_limit == LIMIT_EXHAUST and not self.last_intake_passive:
-            other = self.last_intake_seconds
-        else:
-            return None
+            shares.append((s.phase_limit_percent, REASON_PHASE_LIMIT))
+        return min(shares) if shares else (None, None)
+
+    def _phase_limit(self, s: Settings, passive: bool) -> tuple[float | None, str | None]:
+        """(the longest the running phase may last, why) under the phase limit or drying, if either applies.
+
+        Never below the minimum phase, which protects the fans and relays.
+        """
+        share, reason = self._limit_share(s, passive)
+        if share is None:
+            return None, None
+        other = self.last_exhaust_seconds if self.phase == PHASE_INTAKE else self.last_intake_seconds
         if not other:
-            return None  # nothing to compare with yet
-        return max(other * s.phase_limit_percent / 100, s.min_phase_seconds)
+            return None, None  # nothing to compare with yet
+        return max(other * share / 100, s.min_phase_seconds), reason
 
     def _watch_passive_flow(self, elapsed: float, s: Settings, inside) -> None:
         """During a passive intake, notice air actually flowing in.
@@ -426,9 +532,10 @@ class BreathingLogic:
         """
         if self.passive_flow or inside is None or self._intake_inside_start is None:
             return
-        if self.outdoor_estimate is None:
+        outdoor = self.outdoor_air()
+        if outdoor is None:
             return
-        direction = self.outdoor_estimate - self._intake_inside_start
+        direction = outdoor - self._intake_inside_start
         if abs(direction) < s.passive_flow_delta:
             return  # indoor and outdoor too alike to tell
         moved = (inside - self._intake_inside_start) * (1 if direction > 0 else -1)

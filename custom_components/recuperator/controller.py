@@ -26,6 +26,7 @@ from homeassistant.helpers.event import (
 from homeassistant.util import dt as dt_util
 from homeassistant.util.unit_conversion import TemperatureConverter
 
+from .ambient import Ambient, absolute_humidity
 from .const import (
     CONF_EXHAUST_SWITCH,
     CONF_INSIDE_SENSOR,
@@ -33,10 +34,14 @@ from .const import (
     CONF_LINK_EXHAUST_SWITCH,
     CONF_LINK_INTAKE_SWITCH,
     CONF_LINK_TYPE,
+    CONF_OUTDOOR_HUMIDITY,
+    CONF_OUTDOOR_TEMPERATURE,
     CONF_OUTSIDE_SENSOR,
     CONF_PALETTE,
     CONF_PASSIVE_INTAKE,
     CONF_PHASE_LIMIT,
+    CONF_ROOM_HUMIDITY,
+    CONF_ROOM_TEMPERATURE,
     DEFAULTS,
     LINK_EXHAUST_FAN,
     LINK_INTAKE_FAN,
@@ -78,6 +83,11 @@ class RecuperatorController:
         # one exhausts, its exhaust while this one takes air in.
         self.link_type: str = entry.data.get(CONF_LINK_TYPE, LINK_NONE)
         self.link_exhaust_switch, self.link_intake_switch = linked_fans(entry.data)
+        # Optional room and outdoor sensors (the outdoor ones may be weather entities).
+        self.room_temperature_sensor: str | None = entry.data.get(CONF_ROOM_TEMPERATURE) or None
+        self.outdoor_temperature_sensor: str | None = entry.data.get(CONF_OUTDOOR_TEMPERATURE) or None
+        self.room_humidity_sensor: str | None = entry.data.get(CONF_ROOM_HUMIDITY) or None
+        self.outdoor_humidity_sensor: str | None = entry.data.get(CONF_OUTDOOR_HUMIDITY) or None
         self.logic = BreathingLogic()
         self.enabled = False
         self.mode = MODE_AUTOMATIC
@@ -149,6 +159,14 @@ class RecuperatorController:
         self.hass.config_entries.async_update_entry(
             self.entry, options={**self.entry.options, CONF_PHASE_LIMIT: value}
         )
+
+    def option(self, key: str) -> bool:
+        """An on/off setting (the Drying switches)."""
+        return bool(self.entry.options.get(key, False))
+
+    async def async_set_option(self, key: str, on: bool) -> None:
+        """Store an on/off setting; applies on the next tick."""
+        self.hass.config_entries.async_update_entry(self.entry, options={**self.entry.options, key: bool(on)})
 
     async def async_reset_settings(self) -> None:
         """Put every setting back to its default."""
@@ -282,8 +300,41 @@ class RecuperatorController:
         probe = INSIDE if entity_id == self.inside_sensor else OUTSIDE
         self.logic.record(probe, now, self._read(entity_id))
 
+    def ambient(self) -> Ambient:
+        """The optional room and outdoor sensors' readings (°C, % RH); None where not set up or unavailable."""
+        return Ambient(
+            room_temperature=self._temperature(self.room_temperature_sensor),
+            outdoor_temperature=self._temperature(self.outdoor_temperature_sensor),
+            room_humidity=self._humidity(self.room_humidity_sensor),
+            outdoor_humidity=self._humidity(self.outdoor_humidity_sensor),
+        )
+
+    def _temperature(self, entity_id: str | None) -> float | None:
+        return ambient_celsius(self.hass.states.get(entity_id)) if entity_id else None
+
+    def _humidity(self, entity_id: str | None) -> float | None:
+        return ambient_humidity(self.hass.states.get(entity_id)) if entity_id else None
+
+    def room_absolute_humidity(self) -> float | None:
+        """The room's water content (g/m³), from its humidity and the best known room temperature."""
+        humidity = self.logic.ambient.room_humidity
+        room = self.logic.room_air()
+        return None if humidity is None or room is None else absolute_humidity(room, humidity)
+
+    def outdoor_absolute_humidity(self) -> float | None:
+        """The outdoor air's water content (g/m³), from its humidity and the best known outdoor temperature."""
+        humidity = self.logic.ambient.outdoor_humidity
+        outdoor = self.logic.outdoor_air()
+        return None if humidity is None or outdoor is None else absolute_humidity(outdoor, humidity)
+
     async def _tick(self, _now=None) -> None:
+        drying_before = self.logic.drying
+        self.logic.ambient = self.ambient()
+        self.logic.update_drying(self.settings)
         await self._async_run(self._now())
+        if self.logic.drying != drying_before:
+            _LOGGER.debug("%s: drying %s", self.entry.title, self.logic.drying.status)
+            self._notify()
 
     async def _async_run(self, now: float) -> None:
         if not self.enabled:
@@ -399,9 +450,21 @@ class RecuperatorController:
             "timed": self.logic.timed_reason,
             "cold_weather": self.logic.cold,
             "mode": self.mode,
+            "drying": self.logic.drying.status,
             "passive": self.logic.phase == PHASE_INTAKE and self.logic.passive,
             "linked_unit": self.link_type,
             "linked_phase": self.linked_state(),
+        }
+
+    def drying_attributes(self) -> dict:
+        """Extra detail for the Drying sensor."""
+        drying = self.logic.drying
+        ambient = self.logic.ambient
+        return {
+            "intake_share": None if drying.intake_share is None else round(drying.intake_share),
+            "exhaust_only": drying.exhaust_only,
+            "room_humidity": ambient.room_humidity,
+            "outdoor_humidity": ambient.outdoor_humidity,
         }
 
     def linked_state(self) -> str:
@@ -436,10 +499,40 @@ def probe_celsius(state: State | None) -> float | None:
         value = float(state.state)
     except ValueError:
         return None
-    unit = state.attributes.get(ATTR_UNIT_OF_MEASUREMENT)
+    return _to_celsius(value, state.attributes.get(ATTR_UNIT_OF_MEASUREMENT))
+
+
+def _to_celsius(value: float, unit: str | None) -> float:
+    """A temperature in `unit` as °C (no unit, or a unit that is not a temperature: taken as °C)."""
     if unit in (None, UnitOfTemperature.CELSIUS):
         return value
     try:
         return TemperatureConverter.convert(value, unit, UnitOfTemperature.CELSIUS)
     except (HomeAssistantError, ValueError):
         return value
+
+
+def _number(value) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def ambient_celsius(state: State | None) -> float | None:
+    """A room or outdoor temperature in °C: a temperature sensor, or a weather entity's temperature."""
+    if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+        return None
+    if state.domain == "weather":
+        value = _number(state.attributes.get("temperature"))
+        return None if value is None else _to_celsius(value, state.attributes.get("temperature_unit"))
+    return probe_celsius(state)
+
+
+def ambient_humidity(state: State | None) -> float | None:
+    """A relative humidity (%): a humidity sensor, or a weather entity's humidity; None if not 0-100."""
+    if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+        return None
+    raw = state.attributes.get("humidity") if state.domain == "weather" else state.state
+    value = _number(raw)
+    return value if value is not None and 0 <= value <= 100 else None

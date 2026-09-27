@@ -13,16 +13,23 @@ from homeassistant.helpers import selector
 
 from .diagram import PALETTE, palette_to_text
 from .const import (
+    AMBIENT_KEYS,
+    CONF_DRYING,
+    CONF_DRYING_EXHAUST_ONLY,
     CONF_EXHAUST_SWITCH,
     CONF_INSIDE_SENSOR,
     CONF_INTAKE_SWITCH,
     CONF_LINK_EXHAUST_SWITCH,
     CONF_LINK_INTAKE_SWITCH,
     CONF_LINK_TYPE,
+    CONF_OUTDOOR_HUMIDITY,
+    CONF_OUTDOOR_TEMPERATURE,
     CONF_OUTSIDE_SENSOR,
     CONF_PALETTE,
     CONF_PASSIVE_INTAKE,
     CONF_PHASE_LIMIT,
+    CONF_ROOM_HUMIDITY,
+    CONF_ROOM_TEMPERATURE,
     DEFAULTS,
     DOMAIN,
     LINK_EXHAUST_FAN,
@@ -164,7 +171,9 @@ class RecuperatorOptionsFlow(OptionsFlow):
     """Configure: a menu with the numeric settings and the diagram colours."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        return self.async_show_menu(step_id="init", menu_options=["settings", "link", "replay", "colours"])
+        return self.async_show_menu(
+            step_id="init", menu_options=["settings", "sensors", "link", "replay", "colours"]
+        )
 
     async def async_step_settings(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """The cycle's settings; reset puts them back (colours and replay settings are kept)."""
@@ -192,6 +201,8 @@ class RecuperatorOptionsFlow(OptionsFlow):
                 selector.SelectSelectorConfig(options=PHASE_LIMITS, translation_key=CONF_PHASE_LIMIT)
             )
         )
+        for key in (CONF_DRYING, CONF_DRYING_EXHAUST_ONLY):
+            schema[vol.Optional(key, default=bool(current.get(key, False)))] = selector.BooleanSelector()
         schema[vol.Optional(CONF_RESET, default=False)] = selector.BooleanSelector()
         return self.async_show_form(step_id="settings", data_schema=vol.Schema(schema))
 
@@ -213,6 +224,21 @@ class RecuperatorOptionsFlow(OptionsFlow):
                 return self.async_create_entry(data=dict(entry.options))
         current = user_input if user_input is not None else dict(entry.data)
         return self.async_show_form(step_id="link", data_schema=_link_schema(current), errors=errors)
+
+    async def async_step_sensors(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        """Optional room and outdoor sensors: temperatures and humidities (outdoor ones may be a weather entity).
+
+        Stored with the fans and probes; saving restarts the recuperator with them.
+        A field left empty removes that sensor.
+        """
+        entry = self.config_entry
+        if user_input is not None:
+            data = {k: v for k, v in entry.data.items() if k not in AMBIENT_KEYS}
+            data.update({k: v for k, v in user_input.items() if k in AMBIENT_KEYS and v})
+            self.hass.config_entries.async_update_entry(entry, data=data)
+            self.hass.config_entries.async_schedule_reload(entry.entry_id)
+            return self.async_create_entry(data=dict(entry.options))
+        return self.async_show_form(step_id="sensors", data_schema=_sensors_schema(dict(entry.data)))
 
     async def async_step_replay(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """The settings used by the Create replay button (and saved by the action)."""
@@ -344,3 +370,28 @@ def _link_data(user_input: dict[str, Any]) -> dict[str, Any]:
     for key in LINK_NEEDS[link_type]:
         data[key] = user_input[key]
     return data
+
+
+# -- the Room and outdoor sensors page ------------------------------------------------
+
+
+def _ambient_picker(device_class: str, weather: bool) -> selector.EntitySelector:
+    """A sensor of this device class, or (for the outdoors) also a weather entity."""
+    filters: list[dict[str, Any]] = [{"domain": "sensor", "device_class": device_class}]
+    if weather:
+        filters.append({"domain": "weather"})
+    return selector.EntitySelector(selector.EntitySelectorConfig(filter=filters))
+
+
+def _sensors_schema(current: dict[str, Any]) -> vol.Schema:
+    """The four optional sensors, pre-filled where set."""
+
+    def key(name: str):
+        return vol.Optional(name, description={"suggested_value": current.get(name)})
+
+    return vol.Schema({
+        key(CONF_ROOM_TEMPERATURE): _ambient_picker("temperature", weather=False),
+        key(CONF_ROOM_HUMIDITY): _ambient_picker("humidity", weather=False),
+        key(CONF_OUTDOOR_TEMPERATURE): _ambient_picker("temperature", weather=True),
+        key(CONF_OUTDOOR_HUMIDITY): _ambient_picker("humidity", weather=True),
+    })
