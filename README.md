@@ -256,7 +256,7 @@ The replay has its own small **Replay** device, listed under *Connected devices*
 
 ## Recent changes
 
-- **0.6.0.**
+- **0.5.5.**
   - **Heat recovery** is now the real temperature efficiency: steady, and higher when the core does better. The old number is the diagnostic *Core used*.
   - Optional **room and outdoor sensors**; the outdoor ones can be a weather entity.
   - **Drying**, with a room humidity sensor.
