@@ -83,11 +83,51 @@ async def test_settings_are_saved(hass: HomeAssistant, entry) -> None:
     assert result["step_id"] == "settings"
     assert "replay_hours" not in result["data_schema"].schema
     result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"timed_exhaust_seconds": 30, "timed_intake_seconds": 90}
+        result["flow_id"],
+        {"timed": {"timed_exhaust_seconds": 30, "timed_intake_seconds": 90}, "drying": {"drying": True}},
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options["timed_exhaust_seconds"] == 30
     assert entry.options["timed_intake_seconds"] == 90
+    assert entry.options["drying"] is True
+    assert "timed" not in entry.options  # stored flat, as before
+    assert entry.options["recovery_percent"] == DEFAULTS["recovery_percent"]  # other sections keep defaults
+
+
+def _collapsed(result) -> dict[str, bool]:
+    return {str(key): value.options["collapsed"] for key, value in result["data_schema"].schema.items()
+            if hasattr(value, "options")}
+
+
+async def test_settings_are_grouped_in_sections(hass: HomeAssistant, entry) -> None:
+    """Every cycle setting is in exactly one section; the replay's are on their own page."""
+    from custom_components.recuperator.config_flow import SETTINGS_SECTIONS
+    from custom_components.recuperator.const import REPLAY_KEYS, SETTINGS
+
+    grouped = [key for _name, keys, _open in SETTINGS_SECTIONS for key in keys]
+    assert len(grouped) == len(set(grouped))
+    numbers = {s.key for s in SETTINGS if s.key not in REPLAY_KEYS}
+    assert numbers <= set(grouped)
+    assert set(grouped) - numbers == {"phase_limit", "drying", "drying_exhaust_only", "passive_intake"}
+
+    result = await _open_options(hass, entry, "settings")
+    collapsed = _collapsed(result)
+    assert not collapsed["rhythm"] and not collapsed["protection"] and not collapsed["cold"]
+    assert collapsed["drying"] and collapsed["phase_balance"] and collapsed["passive"] and collapsed["timed"]
+    # The frontend fills each section from the section's default, so it must hold the current values.
+    defaults = {str(key): key.default() for key in result["data_schema"].schema if hasattr(key, "default")}
+    assert defaults["rhythm"]["recovery_percent"] == entry.options["recovery_percent"]
+    assert defaults["drying"]["drying"] is False and defaults["phase_balance"]["phase_limit"] == "off"
+
+
+async def test_sections_open_when_their_feature_is_on(hass: HomeAssistant, fans, probes) -> None:
+    entry = await setup_entry(
+        hass, make_entry(options={"drying": True, "phase_limit": "limited_intake", "passive_intake": True})
+    )
+    await entry.runtime_data.async_set_mode("timed")
+    collapsed = _collapsed(await _open_options(hass, entry, "settings"))
+    assert not any(collapsed[name] for name in ("drying", "phase_balance", "passive", "timed"))
+    assert collapsed["fine_tuning"]
 
 
 async def test_settings_reset_keeps_replay_settings(hass: HomeAssistant, fans, probes) -> None:

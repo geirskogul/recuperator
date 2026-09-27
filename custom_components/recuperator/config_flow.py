@@ -9,6 +9,7 @@ import voluptuous as vol
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.const import CONF_NAME
 from homeassistant.core import callback
+from homeassistant.data_entry_flow import section
 from homeassistant.helpers import selector
 
 from .diagram import PALETTE, palette_to_text
@@ -38,9 +39,11 @@ from .const import (
     LINK_RECUPERATOR,
     LINK_TYPES,
     LIMIT_OFF,
+    MODE_TIMED,
     PHASE_LIMITS,
     REPLAY_KEYS,
     SETTINGS,
+    SETTINGS_BY_KEY,
     unique_id_for,
 )
 from .controller import linked_fans
@@ -176,33 +179,23 @@ class RecuperatorOptionsFlow(OptionsFlow):
         )
 
     async def async_step_settings(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """The cycle's settings; reset puts them back (colours and replay settings are kept)."""
+        """The cycle's settings, in sections; reset puts them back (colours and replay settings are kept)."""
         keep = {k: v for k, v in self.config_entry.options.items() if k == CONF_PALETTE or k in REPLAY_KEYS}
         if user_input is not None:
             if user_input.pop(CONF_RESET, False):
                 return self.async_create_entry(data={**DEFAULTS, **keep})
-            return self.async_create_entry(data={**DEFAULTS, **user_input, **keep})
+            return self.async_create_entry(data={**DEFAULTS, **_flatten(user_input), **keep})
         current = {**DEFAULTS, **self.config_entry.options}
-        schema: dict = {}
-        for s in SETTINGS:
-            if s.key in REPLAY_KEYS:
-                continue
-            cfg = selector.NumberSelectorConfig(
-                min=s.minimum, max=s.maximum, step=s.step, mode=selector.NumberSelectorMode.BOX
+        active = _active_sections(current, self.config_entry.runtime_data.mode)
+        # Each section's default holds its current values: the frontend fills a section
+        # from the section's default, not from its fields' own defaults.
+        schema: dict = {
+            vol.Required(name, default=_section_values(keys, current)): section(
+                vol.Schema({_field(key, current): _field_selector(key) for key in keys}),
+                {"collapsed": name not in active},
             )
-            if s.unit:
-                cfg["unit_of_measurement"] = s.unit
-            schema[vol.Required(s.key, default=current[s.key])] = selector.NumberSelector(cfg)
-        schema[vol.Optional(CONF_PASSIVE_INTAKE, default=bool(current.get(CONF_PASSIVE_INTAKE, False)))] = (
-            selector.BooleanSelector()
-        )
-        schema[vol.Optional(CONF_PHASE_LIMIT, default=current.get(CONF_PHASE_LIMIT, LIMIT_OFF))] = (
-            selector.SelectSelector(
-                selector.SelectSelectorConfig(options=PHASE_LIMITS, translation_key=CONF_PHASE_LIMIT)
-            )
-        )
-        for key in (CONF_DRYING, CONF_DRYING_EXHAUST_ONLY):
-            schema[vol.Optional(key, default=bool(current.get(key, False)))] = selector.BooleanSelector()
+            for name, keys, _open in SETTINGS_SECTIONS
+        }
         schema[vol.Optional(CONF_RESET, default=False)] = selector.BooleanSelector()
         return self.async_show_form(step_id="settings", data_schema=vol.Schema(schema))
 
@@ -395,3 +388,94 @@ def _sensors_schema(current: dict[str, Any]) -> vol.Schema:
         key(CONF_OUTDOOR_TEMPERATURE): _ambient_picker("temperature", weather=True),
         key(CONF_OUTDOOR_HUMIDITY): _ambient_picker("humidity", weather=True),
     })
+
+
+# -- the Settings page: grouped in sections ---------------------------------------
+
+# (section, its settings in order, open by default). A closed section opens by
+# itself when what it controls is switched on (see _active_sections).
+SETTINGS_SECTIONS: tuple[tuple[str, tuple[str, ...], bool], ...] = (
+    ("rhythm", ("recovery_percent", "min_phase_seconds", "max_phase_seconds", "pause_seconds"), True),
+    ("fine_tuning", ("settle_seconds", "settle_delta"), False),
+    ("protection", ("max_supply_drop", "min_supply_temperature"), True),
+    ("cold", ("cold_threshold", "cold_intake_max_seconds", "cold_exhaust_extra_seconds"), True),
+    ("timed", ("timed_exhaust_seconds", "timed_intake_seconds", "similar_band"), False),
+    ("phase_balance", (CONF_PHASE_LIMIT, "phase_limit_percent"), False),
+    (
+        "drying",
+        (
+            CONF_DRYING,
+            CONF_DRYING_EXHAUST_ONLY,
+            "target_humidity",
+            "drying_band",
+            "drying_min_intake_share",
+            "drying_exhaust_only_humidity",
+            "drying_min_room_temperature",
+        ),
+        False,
+    ),
+    ("passive", (CONF_PASSIVE_INTAKE, "passive_intake_max_seconds", "passive_flow_delta"), False),
+)
+ON_OFF = (CONF_PASSIVE_INTAKE, CONF_DRYING, CONF_DRYING_EXHAUST_ONLY)
+
+
+def _active_sections(current: dict[str, Any], mode: str) -> set[str]:
+    """Sections shown open: those open by default, and those whose feature is switched on."""
+    active = {name for name, _keys, is_open in SETTINGS_SECTIONS if is_open}
+    if mode == MODE_TIMED:
+        active.add("timed")
+    if current.get(CONF_PHASE_LIMIT, LIMIT_OFF) != LIMIT_OFF:
+        active.add("phase_balance")
+    if current.get(CONF_DRYING):
+        active.add("drying")
+    if current.get(CONF_PASSIVE_INTAKE):
+        active.add("passive")
+    return active
+
+
+def _current(key: str, current: dict[str, Any]) -> Any:
+    """A setting's current value, as the form shows it."""
+    if key in ON_OFF:
+        return bool(current.get(key, False))
+    if key == CONF_PHASE_LIMIT:
+        return current.get(key, LIMIT_OFF)
+    return current[key]
+
+
+def _section_values(keys: tuple[str, ...], current: dict[str, Any]) -> dict[str, Any]:
+    return {key: _current(key, current) for key in keys}
+
+
+def _field(key: str, current: dict[str, Any]):
+    """A settings field, filled in with the current value."""
+    if key in ON_OFF or key == CONF_PHASE_LIMIT:
+        return vol.Optional(key, default=_current(key, current))
+    return vol.Required(key, default=_current(key, current))
+
+
+def _field_selector(key: str):
+    """The input for a setting: a switch, the phase limit choice, or a number box."""
+    if key in ON_OFF:
+        return selector.BooleanSelector()
+    if key == CONF_PHASE_LIMIT:
+        return selector.SelectSelector(
+            selector.SelectSelectorConfig(options=PHASE_LIMITS, translation_key=CONF_PHASE_LIMIT)
+        )
+    spec = SETTINGS_BY_KEY[key]
+    cfg = selector.NumberSelectorConfig(
+        min=spec.minimum, max=spec.maximum, step=spec.step, mode=selector.NumberSelectorMode.BOX
+    )
+    if spec.unit:
+        cfg["unit_of_measurement"] = spec.unit
+    return selector.NumberSelector(cfg)
+
+
+def _flatten(user_input: dict[str, Any]) -> dict[str, Any]:
+    """The sections' values as one flat mapping, as the options are stored."""
+    flat: dict[str, Any] = {}
+    for key, value in user_input.items():
+        if isinstance(value, dict):
+            flat.update(value)
+        else:
+            flat[key] = value
+    return flat

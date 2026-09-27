@@ -56,62 +56,128 @@
         "title": "Recuperator settings",
         "description": "All settings take effect within a second, without restarting the cycle. They are also available as entities on the device page.",
         "data": {
-          "recovery_percent": "Recovery target",
-          "settle_seconds": "Settle window",
-          "settle_delta": "Settle change",
-          "min_phase_seconds": "Minimum phase",
-          "max_phase_seconds": "Maximum phase",
-          "pause_seconds": "Pause",
-          "timed_exhaust_seconds": "Timed exhaust",
-          "timed_intake_seconds": "Timed intake",
-          "similar_band": "Similar temperatures",
-          "cold_threshold": "Cold threshold",
-          "cold_intake_max_seconds": "Cold intake limit",
-          "cold_exhaust_extra_seconds": "Cold exhaust extra",
-          "reset_to_defaults": "Reset settings to defaults",
-          "min_supply_temperature": "Minimum supply temperature",
-          "max_supply_drop": "Maximum supply drop",
-          "passive_intake": "Passive intake (intake fan off)",
-          "passive_intake_max_seconds": "Passive intake maximum",
-          "passive_flow_delta": "Passive inflow change",
-          "phase_limit": "Phase limit",
-          "phase_limit_percent": "Phase limit share",
-          "target_humidity": "Target humidity",
-          "drying_band": "Drying range",
-          "drying_min_intake_share": "Drying intake share",
-          "drying_exhaust_only_humidity": "Exhaust-only humidity",
-          "drying_min_room_temperature": "Drying room minimum",
-          "drying": "Drying",
-          "drying_exhaust_only": "Drying may run exhaust only"
+          "reset_to_defaults": "Reset settings to defaults"
         },
         "data_description": {
-          "recovery_percent": "End a phase once the far probe has closed this much of the gap. Low (10-25%): switch as soon as the far end of the core starts to change, best heat recovery, shorter phases. High (80%+): let the core fill up, longer phases, more heat lost at the end of each phase.",
-          "settle_seconds": "The far probe counts as settled if it moved less than the settle change over this many seconds.",
-          "settle_delta": "How little the far probe may move during the settle window to count as settled (ended early because the core has done all it will).",
-          "min_phase_seconds": "No exhaust or intake phase ends before this, whatever the probes say.",
-          "max_phase_seconds": "No exhaust or powered intake phase runs longer than this (up to 24 hours).",
-          "pause_seconds": "Both fans off for this long between phases, so a fan stops before the other starts.",
-          "timed_exhaust_seconds": "Length of each exhaust phase in Timed mode, and whenever the probes cannot be used (inside and outside too similar, or a probe unavailable).",
-          "timed_intake_seconds": "Length of each intake phase in Timed mode, and whenever the probes cannot be used. The cold intake limit still applies; a passive intake uses Passive intake maximum instead.",
-          "similar_band": "If the two probes differ by less than this when a phase starts, that phase is timed instead, using Timed exhaust or Timed intake (nothing to recover, e.g. mild weather or hose disconnected).",
-          "cold_threshold": "At or below this outdoor temperature, the cold-weather limits apply.",
-          "cold_intake_max_seconds": "In cold weather, intake never runs longer than this. Allow enough time for fresh air to get through the ducting (several minutes with long hoses or slow fans); Maximum supply drop protects the room.",
-          "cold_exhaust_extra_seconds": "In cold weather, exhaust runs at least as long as the last intake and at most this much longer (no upper limit after an intake the phase limit cut short).",
-          "reset_to_defaults": "Ignore the values above and restore these settings to their defaults. The diagram colours and replay settings are kept.",
-          "min_supply_temperature": "Optional hard floor: the intake also ends if the air entering the room drops below this temperature. -30 (the default) means off. Only set it if there is a temperature the room must never see, e.g. near water pipes.",
-          "max_supply_drop": "During intake the inside probe reads the air entering the room. Once the minimum phase has passed, the intake ends if that air is more than this much colder than the room (the basement temperature from the last exhaust). Works in any season: it follows the room, so a cold room still breathes.",
-          "passive_intake": "Intake phases run with the intake fan off: after each exhaust, the room refills on its own through the core, for up to the passive intake maximum. The exhaust fan works as usual. Passive inflow shows whether air really came in.",
-          "passive_intake_max_seconds": "With passive intake on, the longest an intake phase may last (it can end sooner by the usual rules: recovery target, settled, supply drop, cold limits).",
-          "passive_flow_delta": "During a passive intake, the inside probe moving this much towards the outdoor temperature counts as air flowing in.",
-          "phase_limit": "Keep one phase shorter than the other. Limited intake: an intake never lasts longer than Phase limit share of the exhaust before it. Limited exhaust: the other way round. Minimum phase still applies, room protection can still end an intake sooner, and in cold weather the cold exhaust rule wins over a limited exhaust. Passive intakes are not limited, and Limited exhaust sits out the exhaust after an intake that ran the core out of heat (so the breaths cannot shrink one after another).",
-          "phase_limit_percent": "With a phase limit on: how long the limited phase may run, as a share of the other phase's last length (100% = no longer than it).",
-          "target_humidity": "With Drying on: above this room humidity, breathing leans towards exhaust.",
-          "drying_band": "How far above the target humidity drying reaches its strongest lean (the drying intake share).",
-          "drying_min_intake_share": "The shortest intakes get while drying, as a share of the exhaust before them.",
-          "drying_exhaust_only_humidity": "With 'Drying may run exhaust only' on: at or above this room humidity, run Exhaust only until the room is 3 % below it again.",
-          "drying_min_room_temperature": "Drying stands down while the room is colder than this, so it never chills the room in winter.",
-          "drying": "Lean towards exhaust while the room is more humid than the target humidity. Needs a room humidity sensor (Configure, Room and outdoor sensors).",
-          "drying_exhaust_only": "Let drying switch to Exhaust only when the room is very humid (Exhaust-only humidity)."
+          "reset_to_defaults": "Ignore the values above and restore these settings to their defaults. The diagram colours and replay settings are kept."
+        },
+        "sections": {
+          "rhythm": {
+            "name": "Breathing rhythm",
+            "description": "When a breath ends.",
+            "data": {
+              "recovery_percent": "Recovery target",
+              "min_phase_seconds": "Minimum phase",
+              "max_phase_seconds": "Maximum phase",
+              "pause_seconds": "Pause"
+            },
+            "data_description": {
+              "recovery_percent": "End a phase once the far probe has closed this much of the gap. Low (10-25%): switch as soon as the far end of the core starts to change, best heat recovery, shorter phases. High (80%+): let the core fill up, longer phases, more heat lost at the end of each phase.",
+              "min_phase_seconds": "No exhaust or intake phase ends before this, whatever the probes say.",
+              "max_phase_seconds": "No exhaust or powered intake phase runs longer than this (up to 24 hours).",
+              "pause_seconds": "Both fans off for this long between phases, so a fan stops before the other starts."
+            }
+          },
+          "fine_tuning": {
+            "name": "Fine-tuning",
+            "description": "When the core counts as settled. Rarely needs changing.",
+            "data": {
+              "settle_seconds": "Settle window",
+              "settle_delta": "Settle change"
+            },
+            "data_description": {
+              "settle_seconds": "The far probe counts as settled if it moved less than the settle change over this many seconds.",
+              "settle_delta": "How little the far probe may move during the settle window to count as settled (ended early because the core has done all it will)."
+            }
+          },
+          "protection": {
+            "name": "Draught protection",
+            "description": "Keeping the air coming into the room comfortable.",
+            "data": {
+              "max_supply_drop": "Maximum supply drop",
+              "min_supply_temperature": "Minimum supply temperature"
+            },
+            "data_description": {
+              "max_supply_drop": "During intake the inside probe reads the air entering the room. Once the minimum phase has passed, the intake ends if that air is more than this much colder than the room (the basement temperature from the last exhaust). Works in any season: it follows the room, so a cold room still breathes.",
+              "min_supply_temperature": "Optional hard floor: the intake also ends if the air entering the room drops below this temperature. -30 (the default) means off. Only set it if there is a temperature the room must never see, e.g. near water pipes."
+            }
+          },
+          "cold": {
+            "name": "Cold weather",
+            "description": "Limits that apply at or below the cold threshold.",
+            "data": {
+              "cold_threshold": "Cold threshold",
+              "cold_intake_max_seconds": "Cold intake limit",
+              "cold_exhaust_extra_seconds": "Cold exhaust extra"
+            },
+            "data_description": {
+              "cold_threshold": "At or below this outdoor temperature, the cold-weather limits apply.",
+              "cold_intake_max_seconds": "In cold weather, intake never runs longer than this. Allow enough time for fresh air to get through the ducting (several minutes with long hoses or slow fans); Maximum supply drop protects the room.",
+              "cold_exhaust_extra_seconds": "In cold weather, exhaust runs at least as long as the last intake and at most this much longer (no upper limit after an intake the phase limit cut short)."
+            }
+          },
+          "timed": {
+            "name": "Timed breathing",
+            "description": "Fixed phase lengths: in Timed mode, in mild weather, and while a probe is offline.",
+            "data": {
+              "timed_exhaust_seconds": "Timed exhaust",
+              "timed_intake_seconds": "Timed intake",
+              "similar_band": "Similar temperatures"
+            },
+            "data_description": {
+              "timed_exhaust_seconds": "Length of each exhaust phase in Timed mode, and whenever the probes cannot be used (inside and outside too similar, or a probe unavailable).",
+              "timed_intake_seconds": "Length of each intake phase in Timed mode, and whenever the probes cannot be used. The cold intake limit still applies; a passive intake uses Passive intake maximum instead.",
+              "similar_band": "If the two probes differ by less than this when a phase starts, that phase is timed instead, using Timed exhaust or Timed intake (nothing to recover, e.g. mild weather or hose disconnected)."
+            }
+          },
+          "phase_balance": {
+            "name": "Phase balance",
+            "description": "Keep one phase shorter than the other.",
+            "data": {
+              "phase_limit": "Phase limit",
+              "phase_limit_percent": "Phase limit share"
+            },
+            "data_description": {
+              "phase_limit": "Keep one phase shorter than the other. Limited intake: an intake never lasts longer than Phase limit share of the exhaust before it. Limited exhaust: the other way round. Minimum phase still applies, room protection can still end an intake sooner, and in cold weather the cold exhaust rule wins over a limited exhaust. Passive intakes are not limited, and Limited exhaust sits out the exhaust after an intake that ran the core out of heat (so the breaths cannot shrink one after another).",
+              "phase_limit_percent": "With a phase limit on: how long the limited phase may run, as a share of the other phase's last length (100% = no longer than it)."
+            }
+          },
+          "drying": {
+            "name": "Drying",
+            "description": "While the room is too humid.",
+            "data": {
+              "drying": "Drying",
+              "drying_exhaust_only": "Drying may run exhaust only",
+              "target_humidity": "Target humidity",
+              "drying_band": "Drying range",
+              "drying_min_intake_share": "Drying intake share",
+              "drying_exhaust_only_humidity": "Exhaust-only humidity",
+              "drying_min_room_temperature": "Drying room minimum"
+            },
+            "data_description": {
+              "drying": "Lean towards exhaust while the room is more humid than the target humidity. Needs a room humidity sensor (Configure, Room and outdoor sensors).",
+              "drying_exhaust_only": "Let drying switch to Exhaust only when the room is very humid (Exhaust-only humidity).",
+              "target_humidity": "With Drying on: above this room humidity, breathing leans towards exhaust.",
+              "drying_band": "How far above the target humidity drying reaches its strongest lean (the drying intake share).",
+              "drying_min_intake_share": "The shortest intakes get while drying, as a share of the exhaust before them.",
+              "drying_exhaust_only_humidity": "With 'Drying may run exhaust only' on: at or above this room humidity, run Exhaust only until the room is 3 % below it again.",
+              "drying_min_room_temperature": "Drying stands down while the room is colder than this, so it never chills the room in winter."
+            }
+          },
+          "passive": {
+            "name": "Passive intake",
+            "description": "Intakes with the intake fan off.",
+            "data": {
+              "passive_intake": "Passive intake (intake fan off)",
+              "passive_intake_max_seconds": "Passive intake maximum",
+              "passive_flow_delta": "Passive inflow change"
+            },
+            "data_description": {
+              "passive_intake": "Intake phases run with the intake fan off: after each exhaust, the room refills on its own through the core, for up to the passive intake maximum. The exhaust fan works as usual. Passive inflow shows whether air really came in.",
+              "passive_intake_max_seconds": "With passive intake on, the longest an intake phase may last (it can end sooner by the usual rules: recovery target, settled, supply drop, cold limits).",
+              "passive_flow_delta": "During a passive intake, the inside probe moving this much towards the outdoor temperature counts as air flowing in."
+            }
+          }
         }
       },
       "colours": {
