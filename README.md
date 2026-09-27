@@ -110,7 +110,49 @@ Everything lives on one device:
 - A live **Diagram** of the pipe (see below).
 - **Every setting** as a number, so you can put them on a dashboard. The less common ones start hidden.
 
-You can also change all the settings at once under **Configure**, **Settings**. Each one has a short explanation there. Changes take effect within a second, without restarting anything.
+You can also change all the settings at once under **Configure**, **Settings**. They're grouped into sections there (Breathing rhythm, Draught protection, Cold weather, Drying and so on), each setting with a short explanation. Sections you rarely need start folded, and open by themselves when their feature is switched on. Changes take effect within a second, without restarting anything.
+
+The device page can only list entities alphabetically. For a tidy, grouped view on a dashboard, paste this card and drop the rows you don't need:
+
+```yaml
+type: entities
+title: Basement breather
+entities:
+  - switch.basement_breather_breathing
+  - select.basement_breather_mode
+  - type: section
+    label: Right now
+  - sensor.basement_breather_phase
+  - sensor.basement_breather_last_change_reason
+  - sensor.basement_breather_heat_recovery
+  - sensor.basement_breather_basement_temperature
+  - sensor.basement_breather_outdoor_temperature
+  - type: section
+    label: Breathing rhythm
+  - number.basement_breather_recovery_target
+  - number.basement_breather_minimum_phase
+  - number.basement_breather_maximum_phase
+  - type: section
+    label: Draught protection and cold
+  - number.basement_breather_maximum_supply_drop
+  - number.basement_breather_cold_threshold
+  - number.basement_breather_cold_intake_limit
+  - binary_sensor.basement_breather_cold_weather
+  - binary_sensor.basement_breather_frost_risk
+  - type: section
+    label: Drying
+  - switch.basement_breather_drying
+  - sensor.basement_breather_drying
+  - number.basement_breather_target_humidity
+  - switch.basement_breather_drying_exhaust_only
+  - number.basement_breather_exhaust_only_humidity
+  - type: section
+    label: Phase balance
+  - select.basement_breather_phase_limit
+  - number.basement_breather_phase_limit_share
+```
+
+Check the entity IDs against your device page; they follow the name you gave the recuperator.
 
 Breathing, Mode and the learned temperatures all survive a restart. After a restart, it waits up to a minute for the probes, then carries on with an exhaust.
 
@@ -257,6 +299,7 @@ The replay has its own small **Replay** device, listed under *Connected devices*
 
 ## Recent changes
 
+- **0.5.7.** Configure, Settings is grouped into sections instead of one long list, and the README has a grouped dashboard card.
 - **0.5.6.** Fixes a second feedback loop. With *Limited exhaust* on, when intakes ended because the core ran out of heat, each exhaust was cut to the shortened intake before it, and the breaths shrank to *Minimum phase* and stayed there. Limited exhaust now sits out the exhaust after such an intake.
 - **0.5.5.**
   - **Heat recovery** is now the real temperature efficiency: steady, and higher when the core does better. The old number is the diagnostic *Core used*.
