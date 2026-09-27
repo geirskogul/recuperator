@@ -317,3 +317,65 @@ def test_drying_can_run_exhaust_only_and_hand_back() -> None:
     humidity(55.0)  # dry again: breathing resumes
     changes = run(logic, "timed", s, 341, 100, steady(20, 5))
     assert PHASE_INTAKE in [phase for _t, phase in changes]
+
+
+# -- a simulated core: Limited exhaust must not shrink breaths when intakes drain it --------
+
+
+class Core:
+    """The core's stored heat (0-1): charges while exhausting, drains while taking air in.
+
+    Room 20 °C, outdoors 0 °C. The probe at the far face reads the stored heat, so
+    an intake ends by Maximum supply drop once the core has given up enough of it.
+    """
+
+    ROOM, OUTDOOR, CHARGE, DRAIN = 20.0, 0.0, 0.01, 0.004
+
+    def __init__(self) -> None:
+        self.charge = 0.5
+
+    def probes(self, _t, phase):
+        if phase == PHASE_EXHAUST:
+            self.charge += (1 - self.charge) * self.CHARGE
+        elif phase == PHASE_INTAKE:
+            self.charge -= self.charge * self.DRAIN
+        face = self.OUTDOOR + (self.ROOM - self.OUTDOOR) * self.charge
+        return (self.ROOM, face) if phase == PHASE_EXHAUST else (face, self.OUTDOOR)
+
+
+def breathe_with_core(phase_limit: str) -> tuple[BreathingLogic, list[float]]:
+    """About 20 minutes of breathing; returns the logic and every exhaust length."""
+    s = Settings.from_mapping(
+        {"phase_limit": phase_limit, "phase_limit_percent": 90, "min_phase_seconds": 10,
+         "max_phase_seconds": 300, "recovery_percent": 100, "similar_band": 0}
+    )
+    logic, core = BreathingLogic(), Core()
+    logic.start(0, "automatic", s, Core.ROOM, Core.OUTDOOR)
+    exhausts = []
+    for t in range(1, 1200):
+        if logic.step(t, "automatic", s, *core.probes(t, logic.phase)) and logic.next_phase == PHASE_INTAKE:
+            exhausts.append(logic.last_exhaust_seconds)
+    return logic, exhausts
+
+
+@pytest.mark.parametrize("phase_limit", ["off", "limited_intake", "limited_exhaust"])
+def test_breaths_do_not_shrink_when_intakes_drain_the_core(phase_limit: str) -> None:
+    """Every intake ends by Maximum supply drop. Up to 0.5.5, Limited exhaust then cut each
+    exhaust to 90 % of the drained intake, which stored less heat, so the next intake was
+    shorter still: 300 s, 32 s, 11 s, then Minimum phase for good."""
+    logic, exhausts = breathe_with_core(phase_limit)
+    assert logic.last_reason == REASON_SUPPLY_DROP or logic.last_intake_drained
+    assert len(exhausts) >= 3
+    assert min(exhausts) == 300  # every exhaust runs to Maximum phase, as with no limit
+
+
+def test_limited_exhaust_pauses_after_a_drained_intake_only() -> None:
+    s = Settings.from_mapping({"phase_limit": "limited_exhaust"})
+    logic, _ = breathe_with_core("limited_exhaust")
+    assert logic.phase_limit_status(s) == "paused"
+    logic.last_intake_drained = False
+    assert logic.phase_limit_status(s) == "active"
+    assert logic.phase_limit_status(Settings.from_mapping({})) == "off"
+    # Limited intake is never paused: it caps the intake, which cannot drain the core further.
+    logic.last_intake_drained = True
+    assert logic.phase_limit_status(Settings.from_mapping({"phase_limit": "limited_intake"})) == "active"
