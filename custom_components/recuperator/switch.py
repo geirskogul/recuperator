@@ -1,4 +1,4 @@
-"""The Breathing switch: turns the cycle on and off."""
+"""The Breathing switch (turns the cycle on and off), and the on/off settings."""
 
 from __future__ import annotations
 
@@ -10,12 +10,18 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
+from .const import CONF_DRYING, CONF_DRYING_EXHAUST_ONLY
 from .entity import RecuperatorEntity
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
     c = entry.runtime_data
-    async_add_entities([BreathingSwitch(c, entry, "breathing"), PassiveIntakeSwitch(c, entry, "passive_intake")])
+    async_add_entities([
+        BreathingSwitch(c, entry, "breathing"),
+        PassiveIntakeSwitch(c, entry, "passive_intake"),
+        OptionSwitch(c, entry, CONF_DRYING, "mdi:water-off-outline"),
+        OptionSwitch(c, entry, CONF_DRYING_EXHAUST_ONLY, "mdi:fan-chevron-up"),
+    ])
 
 
 class BreathingSwitch(RecuperatorEntity, SwitchEntity, RestoreEntity):
@@ -56,3 +62,24 @@ class PassiveIntakeSwitch(RecuperatorEntity, SwitchEntity):
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self._controller.async_set_passive_intake(False)
+
+
+class OptionSwitch(RecuperatorEntity, SwitchEntity):
+    """An on/off setting (Drying, Drying exhaust only); applies on the next tick."""
+
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, controller, entry, key: str, icon: str) -> None:
+        super().__init__(controller, entry, key)
+        self._key = key
+        self._attr_icon = icon
+
+    @property
+    def is_on(self) -> bool:
+        return self._controller.option(self._key)
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._controller.async_set_option(self._key, True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._controller.async_set_option(self._key, False)
