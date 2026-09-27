@@ -451,6 +451,7 @@ class RecuperatorController:
             "cold_weather": self.logic.cold,
             "mode": self.mode,
             "drying": self.logic.drying.status,
+            "phase_limit": self.logic.phase_limit_status(self.settings),
             "passive": self.logic.phase == PHASE_INTAKE and self.logic.passive,
             "linked_unit": self.link_type,
             "linked_phase": self.linked_state(),
