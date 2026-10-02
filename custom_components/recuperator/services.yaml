@@ -31,3 +31,9 @@ create_replay:
           min: 0
           max: 1440
           mode: box
+    include_linked:
+      selector:
+        boolean:
+    gif:
+      selector:
+        boolean:

@@ -140,7 +140,8 @@ async def test_settings_reset_keeps_replay_settings(hass: HomeAssistant, fans, p
 
 async def test_replay_settings_have_their_own_page(hass: HomeAssistant, entry) -> None:
     result = await _open_options(hass, entry, "replay")
-    assert set(result["data_schema"].schema) == {"replay_hours", "replay_playback_seconds", "replay_frames"}
+    # the GIF switch too; Include synced recuperator only with a synced recuperator
+    assert set(result["data_schema"].schema) == {"replay_hours", "replay_playback_seconds", "replay_frames", "replay_gif"}
     await hass.config_entries.options.async_configure(result["flow_id"], {"replay_hours": 2})
     assert entry.options["replay_hours"] == 2
 

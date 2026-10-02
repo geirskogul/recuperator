@@ -215,6 +215,27 @@ With **Passive intake** on, the intake fan stays off. After each exhaust, the ro
 
 A second unit can breathe in the opposite direction, so the house stays balanced: while this one exhausts, the other takes air in, and the other way round. Set it up under **Configure**, **Linked unit**. It can be a second recuperator with two fans, or just a single intake or exhaust fan. It follows this unit's phases and pauses. A linked full recuperator gets the same interlock as the main one: its two fans never run together.
 
+#### Synced recuperator
+
+A second recuperator with its own probes can do better than follow. Add it as a Recuperator of its own, then on either one choose **Configure**, **Linked unit**, *Synced recuperator*, and pick the other. Both are linked to each other when you save. Each keeps its own probes, room and outdoor sensors, settings, diagram and Heat recovery, but the two always breathe opposite ways and switch together.
+
+The **Sync rule** decides when they switch:
+
+| Rule | The pair switches |
+|---|---|
+| *Either is done* (default) | as soon as either unit's phase is done. A phase can end a little early for the other unit. |
+| *Both are done* | once both are done. The unit that finished first keeps its fan running until then, so air keeps moving both ways. |
+| *Average of both* | once the two units' progress towards their *Recovery target*, averaged, gets there. Both must be past *Minimum phase*. |
+| *This recuperator leads* / *The synced recuperator leads* | only by the lead unit's own rules. The other unit just measures. |
+
+Whatever the rule, room protection (*Supply colder than room*, *Supply below floor*) and the *Cold limit* on either unit switch the pair at once. Except under a lead rule, so do *Maximum phase*, the phase limit and drying. A unit that switched because of the other one gives the reason *Synced recuperator switched*. Both pause together and start again together, once both pauses are over.
+
+Changing only the sync rule applies at once; the rule is shown from each unit's side, so *This recuperator leads* on one is *The synced recuperator leads* on the other.
+
+**Breathing** and **Mode** stay separate on each unit. The two keep in step only while both are breathing in *Automatic* or *Timed*. While one is off, or runs *Exhaust only* or *Intake only* (drying's included), each breathes on its own. When they join up again, both pause once and set off opposite ways. The Phase sensor's `synced` attribute says whether they are in step, and the *Linked unit* sensor shows what the other one is doing.
+
+Removing one of the two leaves the other unlinked, breathing on its own.
+
 ## Watching it breathe
 
 ### The diagram
@@ -263,9 +284,14 @@ action: recuperator.create_replay
 data:
   hours: 24              # or start: / end: for a specific period (up to 31 days)
   playback_seconds: 60   # length of one loop
+  gif: true              # also save a GIF
 ```
 
-The replay has its own small **Replay** device, listed under *Connected devices* on the recuperator's page. It holds the latest animation, a **Create** button and the default settings for new replays. Each replay is also saved as `/config/www/recuperator/<name>-replay.svg`, which you can open or share. Keep in mind that Home Assistant serves that folder without a login. Replays can only go back as far as your recorder keeps history, which is 10 days by default.
+**A synced pair in one replay.** When the recuperator has a [synced recuperator](#synced-recuperator), its replay draws both: this one on top, the synced one underneath, each with its own pipe and graph. Both graphs share one temperature scale, so you can compare them at a glance, and the cursors sweep in step. To replay just the one, turn off **Include synced recuperator** on the Replay device, untick it on the replay card, or give `include_linked: false` to the action.
+
+**GIF.** An animated SVG plays in browsers and on dashboards, but not in most chat apps, e-mail or phone galleries. For those, turn on **Also save a GIF** on the Replay device, tick it on the replay card, or give `gif: true` to the action. The replay is then also saved as `/config/www/recuperator/<name>-replay.gif`, and the card shows **Download SVG** and **Download GIF** links. A GIF takes a few seconds to draw and keeps at most 200 frames, each stored nearly whole. A 60-second loop of one unit comes to about 3 MB, and a synced pair to about twice that. Fewer **Replay frames** make a smaller file. It's drawn on a white background, because GIFs have no proper transparency.
+
+The replay has its own small **Replay** device, listed under *Connected devices* on the recuperator's page. It holds the latest animation, a **Create** button and the default settings for new replays, including the GIF and synced-recuperator switches. Each replay is also saved as `/config/www/recuperator/<name>-replay.svg`, which you can open or share. Keep in mind that Home Assistant serves that folder without a login. Replays can only go back as far as your recorder keeps history, which is 10 days by default.
 
 ## Staying safe
 
@@ -299,6 +325,10 @@ The replay has its own small **Replay** device, listed under *Connected devices*
 
 ## Recent changes
 
+- **0.5.8.**
+  - A [synced recuperator](#synced-recuperator): two full recuperators, each with its own probes and settings, breathing opposite ways, with a choice of when the pair switches.
+  - [Replays](#replays) of a synced pair show both units in one animation.
+  - Replays can also be saved as a GIF, for sharing where an SVG doesn't play. The replay card links to the files it made.
 - **0.5.7.** Configure, Settings is grouped into sections instead of one long list, and the README has a grouped dashboard card.
 - **0.5.6.** Fixes a second feedback loop. With *Limited exhaust* on, when intakes ended because the core ran out of heat, each exhaust was cut to the shortened intake before it, and the breaths shrank to *Minimum phase* and stayed there. Limited exhaust now sits out the exhaust after such an intake.
 - **0.5.5.**

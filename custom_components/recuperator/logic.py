@@ -178,7 +178,7 @@ class BreathingLogic:
         """Decide what drying wants from the latest readings."""
         self.drying = decide_drying(s, self.ambient, self.room_air(), self.drying.exhaust_only)
 
-    def _effective_mode(self, mode: str) -> str:
+    def effective_mode(self, mode: str) -> str:
         """Drying can turn Automatic or Timed breathing into Exhaust only while the room is very humid."""
         if self.drying.exhaust_only and mode in (MODE_AUTOMATIC, MODE_TIMED):
             return MODE_EXHAUST_ONLY
@@ -317,7 +317,7 @@ class BreathingLogic:
         """Advance the cycle. Returns True if the phase changed."""
         if self.phase == PHASE_STOPPED:
             return False
-        chosen, mode = mode, self._effective_mode(mode)
+        chosen, mode = mode, self.effective_mode(mode)
         if self.phase == PHASE_INTAKE:
             self._sample_supply(now, inside)
 
@@ -343,6 +343,45 @@ class BreathingLogic:
         if s.pause_seconds <= 0:
             self._maybe_leave_pause(now, mode, s, inside, outside)
         return True
+
+    # -- driven from outside, by a synced pair (see sync.py) ----------------------
+
+    def pending_reason(self, now: float, mode: str, s: Settings, inside, outside) -> str | None:
+        """Why the running exhaust or intake would end now (None: not yet), without ending it."""
+        if self.phase == PHASE_INTAKE:
+            self._sample_supply(now, inside)
+        return self._end_reason(now, mode, s, inside, outside)
+
+    def progress(self, now: float, s: Settings, inside, outside) -> float:
+        """How far the running phase is towards ending on its own (1.0 = there).
+
+        The recovered share of the Recovery target, or for a timed phase the
+        share of its length that has run.
+        """
+        elapsed = now - (now if self.phase_started is None else self.phase_started)
+        if self.timed_reason != TIMED_NOT:
+            passive = self.phase == PHASE_INTAKE and self.passive
+            length = s.passive_intake_max_seconds if passive else s.timed_seconds(self.phase)
+            return elapsed / length
+        ref, far = self._ref_far(self.phase, inside, outside)
+        if ref is None or far is None:
+            return 0.0
+        return self._recovered(ref, far) * 100 / s.recovery_percent
+
+    def switch(self, now: float, reason: str, inside, outside, next_phase: str) -> None:
+        """End the running phase (or re-aim a pause) so that `next_phase` comes next."""
+        if self.phase == PHASE_PAUSE:
+            self.next_phase = next_phase
+        else:
+            self._end(now, reason, inside, outside, next_phase=next_phase)
+
+    def pause_over(self, now: float, s: Settings) -> bool:
+        """Has the running pause lasted pause_seconds?"""
+        return self.phase == PHASE_PAUSE and now - (now if self.phase_started is None else self.phase_started) >= s.pause_seconds
+
+    def begin_next(self, now: float, mode: str, s: Settings, inside, outside) -> None:
+        """Leave the pause into the phase that is due."""
+        self._begin(self.next_phase or PHASE_EXHAUST, now, mode, s, inside, outside)
 
     def _maybe_leave_pause(self, now, mode, s, inside, outside) -> bool:
         """Leave the pause once it has lasted pause_seconds."""

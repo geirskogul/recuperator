@@ -20,6 +20,7 @@ from .const import (
     CONF_EXHAUST_SWITCH,
     CONF_INSIDE_SENSOR,
     CONF_INTAKE_SWITCH,
+    CONF_LINK_ENTRY,
     CONF_LINK_EXHAUST_SWITCH,
     CONF_LINK_INTAKE_SWITCH,
     CONF_LINK_TYPE,
@@ -29,24 +30,31 @@ from .const import (
     CONF_PALETTE,
     CONF_PASSIVE_INTAKE,
     CONF_PHASE_LIMIT,
+    CONF_REPLAY_LINKED,
     CONF_ROOM_HUMIDITY,
     CONF_ROOM_TEMPERATURE,
+    CONF_SYNC_RULE,
     DEFAULTS,
     DOMAIN,
     LINK_EXHAUST_FAN,
     LINK_INTAKE_FAN,
     LINK_NONE,
     LINK_RECUPERATOR,
+    LINK_SYNCED,
     LINK_TYPES,
     LIMIT_OFF,
     MODE_TIMED,
     PHASE_LIMITS,
     REPLAY_KEYS,
+    REPLAY_SWITCHES,
     SETTINGS,
     SETTINGS_BY_KEY,
+    SYNC_EITHER,
+    SYNC_RULES,
     unique_id_for,
 )
 from .controller import linked_fans
+from .sync import mirror
 
 FAN_DOMAINS = ["switch", "fan", "light", "input_boolean"]
 CONF_RESET = "reset_to_defaults"
@@ -180,7 +188,10 @@ class RecuperatorOptionsFlow(OptionsFlow):
 
     async def async_step_settings(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """The cycle's settings, in sections; reset puts them back (colours and replay settings are kept)."""
-        keep = {k: v for k, v in self.config_entry.options.items() if k == CONF_PALETTE or k in REPLAY_KEYS}
+        keep = {
+            k: v for k, v in self.config_entry.options.items()
+            if k == CONF_PALETTE or k in REPLAY_KEYS or k in REPLAY_SWITCHES
+        }
         if user_input is not None:
             if user_input.pop(CONF_RESET, False):
                 return self.async_create_entry(data={**DEFAULTS, **keep})
@@ -204,19 +215,20 @@ class RecuperatorOptionsFlow(OptionsFlow):
 
         Stored with the fans and probes (not with the settings, so resetting the
         settings keeps it). Saving restarts the recuperator with the new link.
+        A synced recuperator is stored on both entries, each pointing at the
+        other; changing only the sync rule applies at once, without a restart.
         """
         entry = self.config_entry
         errors: dict[str, str] = {}
         if user_input is not None:
             errors = _link_errors(user_input, entry, _fans_in_use(self.hass, entry.entry_id))
+            errors.update(_sync_errors(self.hass, user_input, entry))
             if not errors:
-                data = {k: v for k, v in entry.data.items() if k not in LINK_KEYS}
-                data.update(_link_data(user_input))
-                self.hass.config_entries.async_update_entry(entry, data=data)
-                self.hass.config_entries.async_schedule_reload(entry.entry_id)
+                _save_link(self.hass, entry, _link_data(user_input))
                 return self.async_create_entry(data=dict(entry.options))
         current = user_input if user_input is not None else dict(entry.data)
-        return self.async_show_form(step_id="link", data_schema=_link_schema(current), errors=errors)
+        others = [e for e in self.hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id]
+        return self.async_show_form(step_id="link", data_schema=_link_schema(current, others), errors=errors)
 
     async def async_step_sensors(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         """Optional room and outdoor sensors: temperatures and humidities (outdoor ones may be a weather entity).
@@ -248,6 +260,11 @@ class RecuperatorOptionsFlow(OptionsFlow):
             if s.unit:
                 cfg["unit_of_measurement"] = s.unit
             schema[vol.Required(s.key, default=current[s.key])] = selector.NumberSelector(cfg)
+        controller = self.config_entry.runtime_data
+        for key in REPLAY_SWITCHES:
+            if key == CONF_REPLAY_LINKED and not controller.link_entry_id:
+                continue  # only with a synced recuperator
+            schema[vol.Optional(key, default=controller.option(key))] = selector.BooleanSelector()
         return self.async_show_form(step_id="replay", data_schema=vol.Schema(schema))
 
     async def async_step_colours(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
@@ -310,18 +327,19 @@ class RecuperatorOptionsFlow(OptionsFlow):
 
 # -- the Linked unit page ------------------------------------------------------------
 
-LINK_KEYS = (CONF_LINK_TYPE, CONF_LINK_EXHAUST_SWITCH, CONF_LINK_INTAKE_SWITCH)
+LINK_KEYS = (CONF_LINK_TYPE, CONF_LINK_EXHAUST_SWITCH, CONF_LINK_INTAKE_SWITCH, CONF_LINK_ENTRY, CONF_SYNC_RULE)
 # the fans each kind of linked unit needs
 LINK_NEEDS = {
     LINK_NONE: (),
     LINK_RECUPERATOR: (CONF_LINK_EXHAUST_SWITCH, CONF_LINK_INTAKE_SWITCH),
     LINK_INTAKE_FAN: (CONF_LINK_INTAKE_SWITCH,),
     LINK_EXHAUST_FAN: (CONF_LINK_EXHAUST_SWITCH,),
+    LINK_SYNCED: (),
 }
 
 
-def _link_schema(current: dict[str, Any]) -> vol.Schema:
-    """Type of linked unit, and its fan(s); the fans are pre-filled if known."""
+def _link_schema(current: dict[str, Any], others: list) -> vol.Schema:
+    """Type of linked unit, its fan(s) or the synced recuperator; pre-filled where known."""
 
     def fan_key(key: str):
         return vol.Optional(key, description={"suggested_value": current.get(key)})
@@ -331,10 +349,21 @@ def _link_schema(current: dict[str, Any]) -> vol.Schema:
             options=LINK_TYPES, translation_key=CONF_LINK_TYPE, mode=selector.SelectSelectorMode.LIST
         )
     )
+    entry_selector = selector.SelectSelector(
+        selector.SelectSelectorConfig(
+            options=[selector.SelectOptionDict(value=e.entry_id, label=e.title) for e in others],
+            mode=selector.SelectSelectorMode.DROPDOWN,
+        )
+    )
+    rule_selector = selector.SelectSelector(
+        selector.SelectSelectorConfig(options=SYNC_RULES, translation_key=CONF_SYNC_RULE)
+    )
     return vol.Schema({
         vol.Required(CONF_LINK_TYPE, default=current.get(CONF_LINK_TYPE, LINK_NONE)): type_selector,
         fan_key(CONF_LINK_EXHAUST_SWITCH): _fan_picker(),
         fan_key(CONF_LINK_INTAKE_SWITCH): _fan_picker(),
+        fan_key(CONF_LINK_ENTRY): entry_selector,
+        vol.Optional(CONF_SYNC_RULE, default=current.get(CONF_SYNC_RULE, SYNC_EITHER)): rule_selector,
     })
 
 
@@ -356,13 +385,65 @@ def _link_errors(user_input: dict[str, Any], entry, in_use: dict[str, str]) -> d
     return errors
 
 
+def _sync_errors(hass, user_input: dict[str, Any], entry) -> dict[str, str]:
+    """A synced recuperator: picked, and not already linked to anything else."""
+    if user_input[CONF_LINK_TYPE] != LINK_SYNCED:
+        return {}
+    other = hass.config_entries.async_get_entry(user_input.get(CONF_LINK_ENTRY) or "")
+    if other is None or other.domain != DOMAIN or other.entry_id == entry.entry_id:
+        return {CONF_LINK_ENTRY: "link_entry_missing"}
+    if other.data.get(CONF_LINK_TYPE, LINK_NONE) != LINK_NONE and _synced_to(other) != entry.entry_id:
+        return {CONF_LINK_ENTRY: "link_entry_taken"}
+    return {}
+
+
+def _synced_to(entry) -> str | None:
+    """The entry ID of the recuperator this one is synced with, if any."""
+    return entry.data.get(CONF_LINK_ENTRY) if entry.data.get(CONF_LINK_TYPE) == LINK_SYNCED else None
+
+
 def _link_data(user_input: dict[str, Any]) -> dict[str, Any]:
-    """What to store: the type and only the fans that type uses."""
+    """What to store: the type, and only the fans (or the synced recuperator and rule) that type uses."""
     link_type = user_input[CONF_LINK_TYPE]
     data: dict[str, Any] = {CONF_LINK_TYPE: link_type}
     for key in LINK_NEEDS[link_type]:
         data[key] = user_input[key]
+    if link_type == LINK_SYNCED:
+        data[CONF_LINK_ENTRY] = user_input[CONF_LINK_ENTRY]
+        data[CONF_SYNC_RULE] = user_input.get(CONF_SYNC_RULE, SYNC_EITHER)
     return data
+
+
+def _set_link(hass, entry, link: dict[str, Any]) -> None:
+    hass.config_entries.async_update_entry(
+        entry, data={**{k: v for k, v in entry.data.items() if k not in LINK_KEYS}, **link}
+    )
+
+
+def _save_link(hass, entry, link: dict[str, Any]) -> None:
+    """Store a new link on this entry, and on the synced recuperators it joins or leaves.
+
+    Both ends of a synced pair point at each other, with the sync rule mirrored.
+    A recuperator left behind is unlinked. Only the entries whose link changed
+    restart; a new sync rule alone applies at once.
+    """
+    old = {CONF_LINK_TYPE: LINK_NONE, **{k: entry.data[k] for k in LINK_KEYS if k in entry.data}}
+    old_partner, new_partner = _synced_to(entry), link.get(CONF_LINK_ENTRY)
+    _set_link(hass, entry, link)
+    restart = {entry.entry_id} if {**old, CONF_SYNC_RULE: None} != {**link, CONF_SYNC_RULE: None} else set()
+    if old_partner and old_partner != new_partner and (other := hass.config_entries.async_get_entry(old_partner)):
+        if _synced_to(other) == entry.entry_id:
+            _set_link(hass, other, {CONF_LINK_TYPE: LINK_NONE})
+            restart.add(other.entry_id)
+    if new_partner and (other := hass.config_entries.async_get_entry(new_partner)):
+        restart |= {other.entry_id} if _synced_to(other) != entry.entry_id else set()
+        _set_link(hass, other, {
+            CONF_LINK_TYPE: LINK_SYNCED,
+            CONF_LINK_ENTRY: entry.entry_id,
+            CONF_SYNC_RULE: mirror(link[CONF_SYNC_RULE]),
+        })
+    for entry_id in restart:
+        hass.config_entries.async_schedule_reload(entry_id)
 
 
 # -- the Room and outdoor sensors page ------------------------------------------------

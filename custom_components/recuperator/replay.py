@@ -4,7 +4,8 @@ Builds a self-animating SVG (SMIL animation, no scripts), so it plays in any
 browser and in a Picture Entity card: the pipe's gradient and the readings in its
 ends change frame by frame, the phase label and airflow arrow switch with each
 phase, and under the pipe a history graph of the two probes has a cursor
-sweeping across it in step.
+sweeping across it in step. A synced recuperator can be drawn as a second panel
+under the first, on the same temperature scale and in step with it.
 
 Pure Python (no Home Assistant), so it can be tested directly.
 """
@@ -327,11 +328,17 @@ def _legend() -> str:
     return "".join(out)
 
 
-def _chart(frames: list[Frame], unit: str, key_times: str, dur: float, fmt: str) -> str:
+def chart_scale(units: list[list[Frame]], unit: str) -> Scale:
+    """One temperature axis for every panel, so two units can be compared at a glance."""
+    return _scale([
+        v for frames in units for f in frames for v in (_display(f.inside, unit), _display(f.outside, unit)) if v is not None
+    ])
+
+
+def _chart(frames: list[Frame], unit: str, key_times: str, dur: float, fmt: str, scale: Scale) -> str:
     """The inside and outside temperatures over the period, like a history graph, with the sweeping cursor."""
     inside = [_display(f.inside, unit) for f in frames]
     outside = [_display(f.outside, unit) for f in frames]
-    scale = _scale([v for v in inside + outside if v is not None])
     start, end = frames[0].when, frames[-1].when
     return (
         _grid(scale, unit)
@@ -347,47 +354,84 @@ def _chart(frames: list[Frame], unit: str, key_times: str, dur: float, fmt: str)
     )
 
 
+def time_format(frames: list[Frame]) -> str:
+    """Clock times within one day, day and time across several."""
+    return "%H:%M" if frames[0].when.date() == frames[-1].when.date() else "%d %b %H:%M"
+
+
+def header_texts(frames: list[Frame], playback_seconds: float) -> tuple[str, str]:
+    """(the date, if the period is within one day; the frame count and loop length) for the top right."""
+    start, end = frames[0].when, frames[-1].when
+    period = start.strftime("%d %b %Y") if start.date() == end.date() else ""
+    return period, f"{len(frames)} frames, {playback_seconds:g} s loop"
+
+
 def render_replay_svg(
     frames: list[Frame],
     playback_seconds: float = 60,
     title: str = "",
     palette: Palette = PALETTE,
     unit: str = "°C",
+    linked: list[Frame] | None = None,
+    linked_title: str = "",
 ) -> str:
     """An animated SVG of the frames, looping every playback_seconds.
 
     The pipe on top, and under it a history graph of the two probes with a
     cursor sweeping across in step with the pipe. Frame temperatures are in °C;
-    they are shown in `unit` (°C or °F).
+    they are shown in `unit` (°C or °F). With `linked` (a synced recuperator's
+    frames, at the same times) its own pipe and graph follow as a second panel.
     """
     if len(frames) < 2:
         raise ValueError("at least two frames are needed")
+    if linked is not None and len(linked) != len(frames):
+        raise ValueError("the linked unit needs one frame per frame")
+    panels = [(frames, title or "Replay")] + ([(linked, linked_title or "Synced recuperator")] if linked else [])
     n = len(frames)
     kt = _key_times(n)
     dur = float(playback_seconds)
-
-    start, end = frames[0].when, frames[-1].when
-    same_day = start.date() == end.date()
-    fmt = "%H:%M" if same_day else "%d %b %H:%M"
-    title_text = escape(title or "Replay")
-    period = f"{start.strftime('%d %b %Y')}" if same_day else ""
-    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 {HEIGHT}" width="640" height="{HEIGHT}" font-family="sans-serif">
+    fmt = time_format(frames)
+    scale = chart_scale([p[0] for p in panels], unit)
+    period, count = header_texts(frames, dur)
+    header = (
+        f'<text x="620" y="22" text-anchor="end" font-size="13" fill="{TEXT}">{escape(period)}</text>'
+        f'<text x="620" y="40" text-anchor="end" font-size="11" fill="{TEXT}">{count}</text>'
+    )
+    body = "".join(
+        _panel(i, unit_frames, unit_title, header if i == 0 else "", scale, palette, unit, kt, dur, fmt)
+        for i, (unit_frames, unit_title) in enumerate(panels)
+    )
+    height = HEIGHT * len(panels)
+    return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 {height}" width="640" height="{height}" font-family="sans-serif">
 <defs>
-<linearGradient id="temp" x1="20" y1="0" x2="620" y2="0" gradientUnits="userSpaceOnUse">{_gradient_stops(frames, palette, kt, dur)}</linearGradient>
 <marker id="head" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="{TEXT}"/></marker>
 </defs>
-<text x="20" y="22" font-size="13" fill="{TEXT}">{title_text}</text>
-<text x="620" y="22" text-anchor="end" font-size="13" fill="{TEXT}">{escape(period)}</text>
-<text x="620" y="40" text-anchor="end" font-size="11" fill="{TEXT}">{n} frames, {dur:g} s loop</text>
+{body}
+</svg>"""
+
+
+def _panel(
+    i: int, frames: list[Frame], title: str, header: str, scale: Scale, palette: Palette, unit: str,
+    kt: str, dur: float, fmt: str,
+) -> str:
+    """One unit's pipe and history graph, the i-th panel from the top."""
+    separator = f'<line x1="20" y1="0" x2="620" y2="0" stroke="{OUTLINE}" stroke-opacity="0.35"/>' if i else ""
+    return f"""<g transform="translate(0,{i * HEIGHT})">
+{separator}
+<defs>
+<linearGradient id="temp{i}" x1="20" y1="0" x2="620" y2="0" gradientUnits="userSpaceOnUse">{_gradient_stops(frames, palette, kt, dur)}</linearGradient>
+</defs>
+<text x="20" y="22" font-size="13" fill="{TEXT}">{escape(title)}</text>
+{header}
 {_phase_labels_and_arrows(frames, kt, dur)}
 <g transform="translate(0,{PIPE_DY})">
-<path d="{_PIPE}" fill="url(#temp)" stroke="{OUTLINE}" stroke-width="3" stroke-linejoin="round"/>
+<path d="{_PIPE}" fill="url(#temp{i})" stroke="{OUTLINE}" stroke-width="3" stroke-linejoin="round"/>
 <text x="20" y="92" font-size="15" font-weight="bold" fill="{TEXT}">Inside</text>
 <text x="620" y="92" text-anchor="end" font-size="15" font-weight="bold" fill="{TEXT}">Outside</text>
 </g>
 {_temperature_texts(frames, dur, unit)}
-{_chart(frames, unit, kt, dur, fmt)}
-</svg>"""
+{_chart(frames, unit, kt, dur, fmt, scale)}
+</g>"""
 
 
 def sample(history: list[tuple[datetime, object]], times: list[datetime]) -> list[object]:

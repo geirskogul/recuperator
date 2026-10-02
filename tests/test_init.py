@@ -34,6 +34,7 @@ async def test_replay_has_its_own_device(hass: HomeAssistant, entry) -> None:
         ("create_replay", "button"),
         ("replay_hours", "number"),
         ("replay_frames", "number"),
+        ("replay_gif", "switch"),
     ):
         entity_id = entities.async_get_entity_id(domain, DOMAIN, f"{entry.entry_id}_{unique_id}")
         assert entities.async_get(entity_id).device_id == replay.id

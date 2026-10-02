@@ -70,3 +70,40 @@ async def test_create_replay_for_a_picked_period(hass: HomeAssistant, fans, tmp_
     assert dt_util.parse_datetime(response["end"]) == end
     assert entry.options["replay_hours"] == 24  # not changed by a picked period
     assert "Inside" in entry.runtime_data.replay_svg.decode()
+
+
+async def test_replay_of_a_synced_pair_with_a_gif(hass: HomeAssistant, fans, tmp_path) -> None:
+    """Both units in one replay, and the GIF saved next to the SVG."""
+    from .test_sync import A, B, DATA_B, _entry, _synced
+    from .conftest import DATA
+
+    hass.config.config_dir = str(tmp_path)
+    for probe, value in ((INSIDE, 20.0), (OUTSIDE, 5.0), ("sensor.inside_b", 18.0), ("sensor.outside_b", -2.0)):
+        set_probe(hass, probe, value)
+    alpha = await setup_entry(hass, _entry("alpha", "Alpha", {**DATA, **_synced("beta")}, A))
+    await setup_entry(hass, _entry("beta", "Beta", {**DATA_B, **_synced("alpha")}, B))
+    await async_wait_recording_done(hass)
+    assert hass.states.get("switch.alpha_replay_include_synced_recuperator").state == "on"
+
+    response = await hass.services.async_call(
+        DOMAIN, "create_replay",
+        {"config_entry_id": "alpha", "hours": 0.25, "playback_seconds": 10, "gif": True},
+        blocking=True, return_response=True,
+    )
+
+    assert response["linked"] == "Beta"
+    assert response["gif_url"] == "/local/recuperator/alpha-replay.gif"
+    svg = alpha.runtime_data.replay_svg.decode()
+    assert ">Alpha</text>" in svg and ">Beta</text>" in svg and "-2.0 °C" in svg
+    assert (tmp_path / "www" / "recuperator" / "alpha-replay.gif").read_bytes()[:6] == b"GIF89a"
+    assert alpha.options["replay_gif"] is True  # remembered for the Create button
+
+    # with the synced recuperator switched off, only this one
+    await hass.services.async_call(
+        "switch", "turn_off", {"entity_id": "switch.alpha_replay_include_synced_recuperator"}, blocking=True
+    )
+    response = await hass.services.async_call(
+        DOMAIN, "create_replay", {"config_entry_id": "alpha", "gif": False}, blocking=True, return_response=True
+    )
+    assert response["linked"] is None and "gif_url" not in response
+    assert ">Beta</text>" not in alpha.runtime_data.replay_svg.decode()

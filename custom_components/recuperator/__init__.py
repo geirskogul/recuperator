@@ -17,7 +17,17 @@ from homeassistant.helpers.event import async_track_entity_registry_updated_even
 from homeassistant.helpers.typing import ConfigType
 
 from .card import async_register_card
-from .const import DOMAIN, LEGACY_TIMED_PHASE, PLATFORMS, WIRING_KEYS, unique_id_for
+from .const import (
+    CONF_LINK_ENTRY,
+    CONF_LINK_TYPE,
+    CONF_SYNC_RULE,
+    DOMAIN,
+    LEGACY_TIMED_PHASE,
+    LINK_NONE,
+    PLATFORMS,
+    WIRING_KEYS,
+    unique_id_for,
+)
 from .controller import RecuperatorController
 from .entity import main_device_info
 from .services import async_load_saved_replay, async_setup_services
@@ -117,3 +127,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: RecuperatorConfigEntry)
 async def _async_options_updated(hass: HomeAssistant, entry: RecuperatorConfigEntry) -> None:
     """Settings changed: apply them live, without restarting the cycle."""
     entry.runtime_data.async_options_updated()
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: RecuperatorConfigEntry) -> None:
+    """A removed recuperator leaves its synced recuperator unlinked, breathing on its own."""
+    for other in hass.config_entries.async_entries(DOMAIN):
+        if other.data.get(CONF_LINK_ENTRY) == entry.entry_id:
+            data = {k: v for k, v in other.data.items() if k not in (CONF_LINK_ENTRY, CONF_SYNC_RULE)}
+            hass.config_entries.async_update_entry(other, data={**data, CONF_LINK_TYPE: LINK_NONE})
+            hass.config_entries.async_schedule_reload(other.entry_id)

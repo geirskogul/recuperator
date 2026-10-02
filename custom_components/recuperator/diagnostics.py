@@ -79,6 +79,8 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry) -> dict
             "display_unit": controller.display_unit,
             "link_type": controller.link_type,
             "linked_state": controller.linked_state(),
+            "sync_rule": controller.sync_rule if controller.link_entry_id else None,
+            "synced": controller.synced() is not None,
             "wanted_fans": controller.wanted_fans(),
         },
         "probes_celsius": {"inside": inside, "outside": outside},

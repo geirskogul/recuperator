@@ -92,6 +92,7 @@ REASON_SUPPLY_DROP = "supply_drop"  # air entering the room fell too far below r
 REASON_SUPPLY_COLD = "supply_cold"  # air entering the room got colder than the hard floor
 REASON_PHASE_LIMIT = "phase_limit"  # the phase limit kept it shorter than the other phase
 REASON_DRYING = "drying"  # drying kept the intake shorter than the exhaust
+REASON_SYNCED = "synced"  # the synced recuperator's phase ended, and this one switched with it
 REASON_STARTED = "started"  # breathing was switched on
 REASON_STOPPED = "stopped"  # breathing was switched off
 REASONS = [
@@ -104,6 +105,7 @@ REASONS = [
     REASON_SUPPLY_COLD,
     REASON_PHASE_LIMIT,
     REASON_DRYING,
+    REASON_SYNCED,
     REASON_STARTED,
     REASON_STOPPED,
 ]
@@ -211,6 +213,12 @@ DEFAULTS: dict[str, float] = {s.key: s.default for s in SETTINGS}
 
 # Settings shown on the Replay device and Configure page, not with the cycle settings.
 REPLAY_KEYS = ("replay_hours", "replay_playback_seconds", "replay_frames")
+# ...and its on/off settings: draw a synced recuperator too, and also save a GIF.
+CONF_REPLAY_LINKED = "replay_linked"
+CONF_REPLAY_GIF = "replay_gif"
+REPLAY_SWITCHES = (CONF_REPLAY_LINKED, CONF_REPLAY_GIF)
+# On/off settings that start out on (all others start off).
+OPTION_DEFAULTS = {CONF_REPLAY_LINKED: True}
 
 # Before 0.2.0 one "Timed phase" length served both phases; it seeds the two new ones.
 LEGACY_TIMED_PHASE = "timed_phase_seconds"
@@ -225,7 +233,20 @@ LINK_NONE = "none"
 LINK_RECUPERATOR = "recuperator"  # its own exhaust and intake fans (biphasic)
 LINK_INTAKE_FAN = "intake_fan"  # one fan blowing outdoor air in
 LINK_EXHAUST_FAN = "exhaust_fan"  # one fan blowing indoor air out
-LINK_TYPES = [LINK_NONE, LINK_RECUPERATOR, LINK_INTAKE_FAN, LINK_EXHAUST_FAN]
+LINK_SYNCED = "synced"  # another Recuperator entry, with its own probes and settings
+LINK_TYPES = [LINK_NONE, LINK_RECUPERATOR, LINK_INTAKE_FAN, LINK_EXHAUST_FAN, LINK_SYNCED]
+
+# A synced recuperator: the other entry, and when the pair switches phases (see sync.py).
+# Both entries store the link, each pointing at the other. The lead rules are
+# stored from each entry's own point of view, so "this" on one is "partner" on the other.
+CONF_LINK_ENTRY = "link_entry"
+CONF_SYNC_RULE = "sync_rule"
+SYNC_EITHER = "either"  # the first unit to finish its phase switches both
+SYNC_BOTH = "both"  # both must finish (the first keeps running until then)
+SYNC_AVERAGE = "average"  # the two units' progress, averaged, must reach the target
+SYNC_LEAD_THIS = "lead_this"  # only this unit's phase decides
+SYNC_LEAD_PARTNER = "lead_partner"  # only the synced unit's phase decides
+SYNC_RULES = [SYNC_EITHER, SYNC_BOTH, SYNC_AVERAGE, SYNC_LEAD_THIS, SYNC_LEAD_PARTNER]
 
 # What the linked unit is doing (the state of the "Linked unit" sensor).
 LINKED_EXHAUST = "exhaust"

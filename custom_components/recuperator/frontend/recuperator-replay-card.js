@@ -4,7 +4,9 @@
  * Pick a period with Home Assistant's own date and time range picker (the one
  * on the History page), press Create, and the card shows the animated replay:
  * the pipe, and under it a history graph of the inside and outside probes with
- * a cursor sweeping across in step with the animation.
+ * a cursor sweeping across in step with the animation. With a synced
+ * recuperator, its own pipe and graph can be drawn underneath. Each new replay
+ * can also be saved as a GIF; the card links to the files it made.
  *
  *   type: custom:recuperator-replay-card
  *   entity: image.basement_breather_replay_animation
@@ -26,6 +28,10 @@ const STYLE = `
   button { font: inherit; font-weight: 500; cursor: pointer; padding: 8px 16px; border: none; border-radius: 18px;
     color: var(--text-primary-color, #fff); background: var(--primary-color); }
   button[disabled] { opacity: 0.5; cursor: default; }
+  .options { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 0 16px 8px; }
+  .options label { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+  .links { display: flex; gap: 16px; padding: 0 16px 8px; }
+  .links a { color: var(--primary-color); }
   .status { padding: 0 16px 8px; color: var(--secondary-text-color); font-size: 0.9em; min-height: 1.2em; }
   .status.error { color: var(--error-color, #db4437); }
   img { display: block; width: 100%; height: auto; }
@@ -103,6 +109,7 @@ class RecuperatorReplayCard extends HTMLElement {
     this._hass = hass;
     if (!this._built) this._build();
     if (this._picker) this._picker.hass = hass;
+    this._updateOptions();
     this._updateImage();
   }
 
@@ -125,7 +132,7 @@ class RecuperatorReplayCard extends HTMLElement {
     style.textContent = STYLE;
     const card = document.createElement("ha-card");
     if (this._config.title) card.header = this._config.title;
-    card.append(this._buildControls(), this._buildStatus(), this._buildImage());
+    card.append(this._buildControls(), this._buildOptions(), this._buildStatus(), this._buildLinks(), this._buildImage());
     root.append(style, card);
   }
 
@@ -140,6 +147,50 @@ class RecuperatorReplayCard extends HTMLElement {
     controls.append(this._pickerSlot, this._button);
     this._addPicker();
     return controls;
+  }
+
+  /* Checkboxes for the Replay device's switches: also a GIF, and the synced recuperator. */
+  _buildOptions() {
+    const options = document.createElement("div");
+    options.className = "options";
+    this._options = {};
+    for (const [key, text] of [["replay_linked", "Include synced recuperator"], ["replay_gif", "Also save a GIF"]]) {
+      const label = document.createElement("label");
+      const box = document.createElement("input");
+      box.type = "checkbox";
+      label.append(box, document.createTextNode(text));
+      label.hidden = true; // until its switch is found
+      options.append(label);
+      this._options[key] = { label, box, synced: false };
+    }
+    return options;
+  }
+
+  _buildLinks() {
+    this._links = document.createElement("div");
+    this._links.className = "links";
+    return this._links;
+  }
+
+  /* The replay device's switch for `key` (replay_gif, replay_linked), if it exists. */
+  _switchFor(key) {
+    const image = this._hass.entities?.[this._config.entity];
+    if (!image) return undefined;
+    return Object.values(this._hass.entities).find(
+      (e) => e.platform === "recuperator" && e.translation_key === key && e.device_id === image.device_id
+    );
+  }
+
+  /* Show a checkbox once its switch is known, ticked as the switch is (once: then it is the user's). */
+  _updateOptions() {
+    for (const [key, option] of Object.entries(this._options)) {
+      const entity = this._switchFor(key);
+      option.label.hidden = !entity;
+      if (entity && !option.synced) {
+        option.box.checked = this._hass.states[entity.entity_id]?.state === "on";
+        option.synced = true;
+      }
+    }
   }
 
   _buildStatus() {
@@ -216,22 +267,42 @@ class RecuperatorReplayCard extends HTMLElement {
     if (entryId) data.config_entry_id = entryId;
     if (this._config.playback_seconds !== undefined) data.playback_seconds = this._config.playback_seconds;
     if (this._config.frames !== undefined) data.frames = this._config.frames;
+    if (!this._options.replay_gif.label.hidden) data.gif = this._options.replay_gif.box.checked;
+    if (!this._options.replay_linked.label.hidden) data.include_linked = this._options.replay_linked.box.checked;
     return data;
   }
 
   async _create() {
     this._button.disabled = true;
-    this._setStatus("Creating the replay…");
+    this._links.innerHTML = "";
+    this._setStatus(this._options.replay_gif.box.checked && !this._options.replay_gif.label.hidden
+      ? "Creating the replay and its GIF…" : "Creating the replay…");
     try {
       const result = await this._hass.callService(
         "recuperator", "create_replay", this._serviceData(), undefined, false, true
       );
-      const frames = result?.response?.frames;
-      this._setStatus(frames ? `${frames} frames` : "");
+      const response = result?.response ?? {};
+      const parts = [response.frames ? `${response.frames} frames` : "", response.linked ? `with ${response.linked}` : ""];
+      this._setStatus(parts.filter(Boolean).join(", "));
+      this._showLinks(response);
     } catch (err) {
       this._setStatus(err?.message || String(err), true);
     } finally {
       this._button.disabled = false;
+    }
+  }
+
+  /* Links to the saved files, to open or download (a time in the address skips the browser's cache). */
+  _showLinks(response) {
+    this._links.innerHTML = "";
+    for (const [url, text] of [[response.url, "SVG"], [response.gif_url, "GIF"]]) {
+      if (!url) continue;
+      const link = document.createElement("a");
+      link.href = `${url}?v=${Date.now()}`;
+      link.download = url.split("/").pop();
+      link.target = "_blank";
+      link.textContent = `Download ${text}`;
+      this._links.append(link);
     }
   }
 

@@ -232,16 +232,20 @@
       },
       "link": {
         "title": "Linked unit",
-        "description": "A second unit that breathes together with this one, moving air the opposite way so the house stays balanced: while this recuperator exhausts, the linked unit takes air in, and while this one takes air in, the linked unit exhausts. It follows this recuperator's phases, pauses and mode. Saving restarts the recuperator.",
+        "description": "A second unit that breathes together with this one, moving air the opposite way so the house stays balanced: while this recuperator exhausts, the linked unit takes air in, and while this one takes air in, the linked unit exhausts.\n\nA full recuperator or a single fan follows this recuperator's phases, pauses and mode. A synced recuperator is another Recuperator you have added, with its own probes, sensors and settings: the two switch together, as the sync rule says. Breathing and Mode stay separate on each, so they only keep in step while both are breathing in Automatic or Timed. Saving restarts the recuperator (and the synced one), unless only the sync rule changed.",
         "data": {
           "link_type": "Linked unit",
           "link_exhaust_switch": "Linked exhaust fan (inside to outside)",
-          "link_intake_switch": "Linked intake fan (outside to inside)"
+          "link_intake_switch": "Linked intake fan (outside to inside)",
+          "link_entry": "Synced recuperator",
+          "sync_rule": "Sync rule"
         },
         "data_description": {
-          "link_type": "Full recuperator: a second biphasic unit with its own exhaust and intake fans. Intake fan only: runs while this recuperator exhausts. Exhaust fan only: runs while this recuperator takes air in.",
+          "link_type": "Full recuperator: a second biphasic unit with its own exhaust and intake fans. Intake fan only: runs while this recuperator exhausts. Exhaust fan only: runs while this recuperator takes air in. Synced recuperator: another Recuperator, with its own probes, that switches together with this one.",
           "link_exhaust_switch": "Needed for a full recuperator or an exhaust fan. Ignored for an intake fan only.",
-          "link_intake_switch": "Needed for a full recuperator or an intake fan. Ignored for an exhaust fan only."
+          "link_intake_switch": "Needed for a full recuperator or an intake fan. Ignored for an exhaust fan only.",
+          "link_entry": "Needed for a synced recuperator: the other Recuperator. It is linked back to this one when you save. Ignored for the other kinds.",
+          "sync_rule": "For a synced recuperator: when the pair switches. Either is done: as soon as one unit's phase is done, so phases can end a little early. Both are done: once both are; the first keeps its fan running until then. Average: once the two units' progress towards their recovery targets, averaged, gets there. A lead rule: only the lead unit's probes decide. Room protection and the cold limits on either unit always switch the pair."
         }
       },
       "replay": {
@@ -250,12 +254,16 @@
         "data": {
           "replay_hours": "Replay hours",
           "replay_playback_seconds": "Replay playback length",
-          "replay_frames": "Replay frames"
+          "replay_frames": "Replay frames",
+          "replay_linked": "Include the synced recuperator",
+          "replay_gif": "Also save a GIF"
         },
         "data_description": {
           "replay_hours": "How much history the Create replay button replays. Also saved from the last Create replay action.",
           "replay_playback_seconds": "How long one loop of the replay lasts.",
-          "replay_frames": "Number of frames (0 = one per minute of history, 60 to 1440)."
+          "replay_frames": "Number of frames (0 = one per minute of history, 60 to 1440).",
+          "replay_linked": "Draw the synced recuperator too, under this one, in the same replay.",
+          "replay_gif": "Also save each replay as an animated GIF next to the SVG, for sharing. A GIF has at most 200 frames; fewer Replay frames make a smaller file."
         }
       },
       "sensors": {
@@ -282,7 +290,9 @@
       "link_fan_missing": "This kind of linked unit needs this fan.",
       "link_fan_is_own": "This is one of this recuperator's own fans; pick the linked unit's fan.",
       "fan_in_use": "This fan is already driven by another recuperator.",
-      "same_switch": "The linked exhaust and intake fans must be different switches."
+      "same_switch": "The linked exhaust and intake fans must be different switches.",
+      "link_entry_missing": "Pick the other Recuperator to sync with.",
+      "link_entry_taken": "That recuperator is already linked to something else. Set its Linked unit to None first."
     }
   },
   "entity": {
@@ -298,6 +308,12 @@
       },
       "drying_exhaust_only": {
         "name": "Drying exhaust only"
+      },
+      "replay_linked": {
+        "name": "Include synced recuperator"
+      },
+      "replay_gif": {
+        "name": "Also save a GIF"
       }
     },
     "select": {
@@ -438,7 +454,8 @@
           "supply_cold": "Supply below floor",
           "supply_drop": "Supply colder than room",
           "phase_limit": "Phase limit",
-          "drying": "Drying"
+          "drying": "Drying",
+          "synced": "Synced recuperator switched"
         }
       },
       "last_exhaust": {
@@ -507,7 +524,7 @@
   "services": {
     "create_replay": {
       "name": "Create replay",
-      "description": "Builds an animated diagram from recorded history, so you can watch the recuperator breathe. The result appears in the Diagram replay image and is saved under /local/recuperator/. Values you give are remembered and used by the Create replay button; values left out use the saved ones.",
+      "description": "Builds an animated diagram from recorded history, so you can watch the recuperator breathe. The result appears in the Diagram replay image and is saved under /local/recuperator/, as an SVG and, if asked, a GIF. Values you give are remembered and used by the Create replay button; values left out use the saved ones.",
       "fields": {
         "config_entry_id": {
           "name": "Recuperator",
@@ -532,6 +549,14 @@
         "frames": {
           "name": "Frames",
           "description": "Number of frames (0 = one per minute of history, 60 to 1440). Left out: the saved value."
+        },
+        "include_linked": {
+          "name": "Include the synced recuperator",
+          "description": "With a synced recuperator: draw it too, under this one, on the same temperature scale. Left out: the saved value (default on)."
+        },
+        "gif": {
+          "name": "Also save a GIF",
+          "description": "Also save the replay as an animated GIF (<name>-replay.gif), which plays where an SVG does not, such as chats and e-mail. Takes a few seconds; at most 200 frames. Left out: the saved value (default off)."
         }
       }
     }
@@ -542,7 +567,8 @@
         "none": "None",
         "recuperator": "Full recuperator (exhaust and intake fans)",
         "intake_fan": "Intake fan only",
-        "exhaust_fan": "Exhaust fan only"
+        "exhaust_fan": "Exhaust fan only",
+        "synced": "Synced recuperator (another Recuperator with its own probes)"
       }
     },
     "phase_limit": {
@@ -550,6 +576,15 @@
         "off": "Off",
         "limited_intake": "Limited intake",
         "limited_exhaust": "Limited exhaust"
+      }
+    },
+    "sync_rule": {
+      "options": {
+        "either": "Either is done",
+        "both": "Both are done",
+        "average": "Average of both",
+        "lead_this": "This recuperator leads",
+        "lead_partner": "The synced recuperator leads"
       }
     }
   },

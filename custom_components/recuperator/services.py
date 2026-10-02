@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from functools import partial
 import os
 
 import voluptuous as vol
@@ -14,8 +15,9 @@ from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
-from .const import DOMAIN
+from .const import CONF_INSIDE_SENSOR, CONF_OUTSIDE_SENSOR, CONF_REPLAY_GIF, CONF_REPLAY_LINKED, DOMAIN
 from .controller import probe_celsius
+from .gif import render_replay_gif
 from .replay import MAX_FRAMES, Frame, frame_times, render_replay_svg, sample
 
 SERVICE_CREATE_REPLAY = "create_replay"
@@ -25,6 +27,8 @@ ATTR_START = "start"
 ATTR_END = "end"
 ATTR_PLAYBACK = "playback_seconds"
 ATTR_FRAMES = "frames"
+ATTR_LINKED = "include_linked"
+ATTR_GIF = "gif"
 
 SCHEMA = vol.Schema(
     {
@@ -35,11 +39,19 @@ SCHEMA = vol.Schema(
         vol.Optional(ATTR_END): cv.datetime,
         vol.Optional(ATTR_PLAYBACK): vol.All(vol.Coerce(float), vol.Range(min=5, max=900)),
         vol.Optional(ATTR_FRAMES): vol.All(vol.Coerce(int), vol.Range(min=0, max=MAX_FRAMES)),
+        vol.Optional(ATTR_LINKED): cv.boolean,
+        vol.Optional(ATTR_GIF): cv.boolean,
     }
 )
 
 # action field -> stored setting (the last values used are remembered)
-SAVED = {ATTR_HOURS: "replay_hours", ATTR_PLAYBACK: "replay_playback_seconds", ATTR_FRAMES: "replay_frames"}
+SAVED = {
+    ATTR_HOURS: "replay_hours",
+    ATTR_PLAYBACK: "replay_playback_seconds",
+    ATTR_FRAMES: "replay_frames",
+    ATTR_LINKED: CONF_REPLAY_LINKED,
+    ATTR_GIF: CONF_REPLAY_GIF,
+}
 
 MIN_PERIOD = timedelta(minutes=5)
 MAX_PERIOD = timedelta(days=31)
@@ -80,9 +92,9 @@ async def _async_create_replay(hass: HomeAssistant, call: ServiceCall) -> Servic
     return await async_create_replay(hass, entry, start=call.data.get(ATTR_START), end=call.data.get(ATTR_END))
 
 
-def replay_file(hass: HomeAssistant, entry: ConfigEntry) -> tuple[str, str]:
-    """(folder, file name) of the saved replay: /config/www/recuperator/<name>-replay.svg."""
-    return hass.config.path("www", "recuperator"), f"{slugify(entry.title)}-replay.svg"
+def replay_file(hass: HomeAssistant, entry: ConfigEntry, extension: str = "svg") -> tuple[str, str]:
+    """(folder, file name) of the saved replay: /config/www/recuperator/<name>-replay.svg (or .gif)."""
+    return hass.config.path("www", "recuperator"), f"{slugify(entry.title)}-replay.{extension}"
 
 
 async def _async_history(hass: HomeAssistant, start: datetime, end: datetime, ids: list[str]) -> dict:
@@ -157,31 +169,59 @@ async def async_create_replay(
     minutes = (end - start).total_seconds() / 60
     count = frames_wanted or min(MAX_FRAMES, max(60, int(minutes)))
 
-    phase_id = er.async_get(hass).async_get_entity_id("sensor", DOMAIN, f"{entry.entry_id}_phase")
-    ids = [controller.inside_sensor, controller.outside_sensor] + ([phase_id] if phase_id else [])
+    # The units to draw: this one, and its synced recuperator under it if wanted.
+    units = [(entry.entry_id, controller.inside_sensor, controller.outside_sensor)]
+    partner = hass.config_entries.async_get_entry(controller.link_entry_id) if controller.link_entry_id else None
+    if partner is not None and controller.option(CONF_REPLAY_LINKED):
+        units.append((partner.entry_id, partner.data[CONF_INSIDE_SENSOR], partner.data[CONF_OUTSIDE_SENSOR]))
+    registry = er.async_get(hass)
+    phase_ids = [registry.async_get_entity_id("sensor", DOMAIN, f"{entry_id}_phase") for entry_id, _i, _o in units]
+    ids = [e for (_id, inside, outside), phase in zip(units, phase_ids) for e in (inside, outside, phase) if e]
     states = await _async_history(hass, start, end, ids)
     times = frame_times(start, end, count)
-    frames = _frames(states, times, controller.inside_sensor, controller.outside_sensor, phase_id)
-    svg = render_replay_svg(frames, playback, entry.title, controller.palette, controller.display_unit)
+    frames, *linked = [
+        _frames(states, times, inside, outside, phase) for (_id, inside, outside), phase in zip(units, phase_ids)
+    ]
+    drawing = {
+        "playback_seconds": playback,
+        "title": entry.title,
+        "palette": controller.palette,
+        "unit": controller.display_unit,
+        "linked": linked[0] if linked else None,
+        "linked_title": partner.title if linked else "",
+    }
+    svg = render_replay_svg(frames, **drawing)
+    gif = None
+    if controller.option(CONF_REPLAY_GIF):
+        # Drawn pixel by pixel: seconds of work, so not in the event loop.
+        gif = await hass.async_add_executor_job(partial(render_replay_gif, frames, **drawing))
 
-    # Also save it where Home Assistant serves files: /config/www -> /local/
+    # Also save them where Home Assistant serves files: /config/www -> /local/
     folder, name = replay_file(hass, entry)
+    _folder, gif_name = replay_file(hass, entry, "gif")
 
     def _write() -> None:
         os.makedirs(folder, exist_ok=True)
         with open(os.path.join(folder, name), "w", encoding="utf-8") as f:
             f.write(svg)
+        if gif is not None:
+            with open(os.path.join(folder, gif_name), "wb") as f:
+                f.write(gif)
 
     await hass.async_add_executor_job(_write)
     controller.set_replay(svg.encode())
-    return {
+    response = {
         "url": f"/local/recuperator/{name}",
         "file": os.path.join(folder, name),
         "start": dt_util.as_local(start).isoformat(),
         "end": dt_util.as_local(end).isoformat(),
         "frames": len(frames),
         "playback_seconds": playback,
+        "linked": partner.title if linked else None,
     }
+    if gif is not None:
+        response.update(gif_url=f"/local/recuperator/{gif_name}", gif_file=os.path.join(folder, gif_name))
+    return response
 
 
 async def async_load_saved_replay(hass: HomeAssistant, entry: ConfigEntry) -> None:

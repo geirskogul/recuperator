@@ -138,3 +138,40 @@ def test_sample_is_a_step_function() -> None:
     history = [(t0 + timedelta(minutes=1), "a"), (t0 + timedelta(minutes=3), "b")]
     times = [t0 + timedelta(minutes=m) for m in range(5)]
     assert sample(history, times) == [None, "a", "a", "b", "b"]
+
+
+def test_replay_with_a_synced_recuperator_has_two_panels() -> None:
+    linked = [Frame(f.when, f.inside + 1, f.outside - 20, "intake" if f.phase == "exhaust" else f.phase) for f in frames()]
+    svg = render_replay_svg(frames(), 30, "Basement", linked=linked, linked_title="Workshop")
+    assert 'viewBox="0 0 640 760"' in svg
+    assert 'id="temp0"' in svg and 'id="temp1"' in svg
+    assert ">Basement</text>" in svg and ">Workshop</text>" in svg
+    assert svg.count('fill="none" stroke=') == 4  # inside and outside lines for each
+    assert ">-10 °C</text>" in svg  # one scale for both: the workshop's cold outside sets the bottom
+    assert svg.count(">-10 °C</text>") == 2
+
+
+def test_replay_linked_frames_must_match() -> None:
+    with pytest.raises(ValueError):
+        render_replay_svg(frames(), 30, linked=frames(5))
+
+
+def test_gif_replay() -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    from custom_components.recuperator.gif import MAX_FRAMES, gif_frame_count, render_replay_gif
+
+    image = Image.open(BytesIO(render_replay_gif(frames(), 10, "Breather")))
+    assert image.format == "GIF" and image.size == (640, 380)
+    assert image.n_frames == 10
+    assert image.info["duration"] == 1000  # 10 frames in a 10 s loop
+    assert image.info["loop"] == 0
+
+    pair = Image.open(BytesIO(render_replay_gif(frames(), 10, linked=frames(), linked_title="Workshop")))
+    assert pair.size == (640, 760)
+
+    assert gif_frame_count(1440, 60) == MAX_FRAMES
+    assert gif_frame_count(1440, 2) == 100  # no frame shorter than 20 ms
+    assert gif_frame_count(60, 60) == 60

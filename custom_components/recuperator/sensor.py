@@ -161,6 +161,14 @@ class LinkedUnitSensor(RecuperatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict:
         c = self._controller
+        if c.link_entry_id:
+            other = c.hass.config_entries.async_get_entry(c.link_entry_id)
+            return {
+                "linked_unit": c.link_type,
+                "synced_with": other.title if other else None,
+                "sync_rule": c.sync_rule,
+                "in_step": c.synced() is not None,
+            }
         return {
             "linked_unit": c.link_type,
             "exhaust_fan": c.link_exhaust_switch,

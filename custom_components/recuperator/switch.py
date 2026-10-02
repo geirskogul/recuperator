@@ -10,18 +10,27 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from .const import CONF_DRYING, CONF_DRYING_EXHAUST_ONLY
-from .entity import RecuperatorEntity
+from homeassistant.helpers import entity_registry as er
+
+from .const import CONF_DRYING, CONF_DRYING_EXHAUST_ONLY, CONF_REPLAY_GIF, CONF_REPLAY_LINKED, DOMAIN
+from .entity import REPLAY_DEVICE, RecuperatorEntity
 
 
 async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddEntitiesCallback) -> None:
     c = entry.runtime_data
-    async_add_entities([
+    switches: list[SwitchEntity] = [
         BreathingSwitch(c, entry, "breathing"),
         PassiveIntakeSwitch(c, entry, "passive_intake"),
         OptionSwitch(c, entry, CONF_DRYING, "mdi:water-off-outline"),
         OptionSwitch(c, entry, CONF_DRYING_EXHAUST_ONLY, "mdi:fan-chevron-up"),
-    ])
+        OptionSwitch(c, entry, CONF_REPLAY_GIF, "mdi:file-gif-box", REPLAY_DEVICE),
+    ]
+    # Drawing the synced recuperator too only makes sense while there is one.
+    if c.link_entry_id:
+        switches.append(OptionSwitch(c, entry, CONF_REPLAY_LINKED, "mdi:link-variant", REPLAY_DEVICE))
+    elif entity_id := er.async_get(hass).async_get_entity_id("switch", DOMAIN, f"{entry.entry_id}_{CONF_REPLAY_LINKED}"):
+        er.async_get(hass).async_remove(entity_id)
+    async_add_entities(switches)
 
 
 class BreathingSwitch(RecuperatorEntity, SwitchEntity, RestoreEntity):
@@ -65,12 +74,12 @@ class PassiveIntakeSwitch(RecuperatorEntity, SwitchEntity):
 
 
 class OptionSwitch(RecuperatorEntity, SwitchEntity):
-    """An on/off setting (Drying, Drying exhaust only); applies on the next tick."""
+    """An on/off setting (Drying, Drying exhaust only, the replay's); applies on the next tick."""
 
     _attr_entity_category = EntityCategory.CONFIG
 
-    def __init__(self, controller, entry, key: str, icon: str) -> None:
-        super().__init__(controller, entry, key)
+    def __init__(self, controller, entry, key: str, icon: str, device: str | None = None) -> None:
+        super().__init__(controller, entry, key, device)
         self._key = key
         self._attr_icon = icon
 
