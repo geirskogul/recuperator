@@ -556,7 +556,7 @@
         },
         "gif": {
           "name": "Also save a GIF",
-          "description": "Also save the replay as an animated GIF (<name>-replay.gif), which plays where an SVG does not, such as chats and e-mail. Takes a few seconds; at most 200 frames. Left out: the saved value (default off)."
+          "description": "Also save the replay as an animated GIF (named like the SVG, ending in -replay.gif), which plays where an SVG does not, such as chats and e-mail. Takes a few seconds; at most 200 frames. Left out: the saved value (default off)."
         }
       }
     }
