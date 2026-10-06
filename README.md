@@ -325,6 +325,7 @@ The replay has its own small **Replay** device, listed under *Connected devices*
 
 ## Recent changes
 
+- **0.5.10.** Ready for Home Assistant 2026.10: the Replay device is linked to its recuperator the new way, so there is no deprecation warning in the log. Older versions keep working.
 - **0.5.9.** Under **Linked unit**, *Full recuperator* is now called *Sensorless recuperator*, so it is clear which unit decides the cycles: a sensorless one has no probes and follows this one, while a synced one judges its own phases. Existing setups are unchanged.
 - **0.5.8.**
   - A [synced recuperator](#synced-recuperator): two full recuperators, each with its own probes and settings, breathing opposite ways, with a choice of when the pair switches.

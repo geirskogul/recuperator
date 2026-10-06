@@ -22,11 +22,18 @@ async def test_setup_and_unload(hass: HomeAssistant, entry) -> None:
     assert entry.state is ConfigEntryState.NOT_LOADED
 
 
+def _device(devices: dr.DeviceRegistry, entry, identifier: str) -> dr.DeviceEntry | None:
+    """Look a device up by identifier; newer Home Assistant deprecates async_get_device."""
+    if hasattr(devices, "async_get_device_by_identifier"):
+        return devices.async_get_device_by_identifier((DOMAIN, identifier), entry.entry_id)
+    return devices.async_get_device({(DOMAIN, identifier)})
+
+
 async def test_replay_has_its_own_device(hass: HomeAssistant, entry) -> None:
     devices = dr.async_get(hass)
     entities = er.async_get(hass)
-    main = devices.async_get_device({(DOMAIN, entry.entry_id)})
-    replay = devices.async_get_device({(DOMAIN, f"{entry.entry_id}_replay")})
+    main = _device(devices, entry, entry.entry_id)
+    replay = _device(devices, entry, f"{entry.entry_id}_replay")
     assert main is not None and replay is not None
     assert replay.via_device_id == main.id
     for unique_id, domain in (

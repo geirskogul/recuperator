@@ -29,7 +29,7 @@ from .const import (
     unique_id_for,
 )
 from .controller import RecuperatorController
-from .entity import main_device_info
+from .entity import main_device_info, replay_device_info, replay_parent
 from .services import async_load_saved_replay, async_setup_services
 
 _LOGGER = logging.getLogger(__name__)
@@ -54,8 +54,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: RecuperatorConfigEntry) 
     """
     controller = RecuperatorController(hass, entry)
     entry.runtime_data = controller
-    # The main device first: the Replay device hangs off it (via_device).
-    dr.async_get(hass).async_get_or_create(config_entry_id=entry.entry_id, **main_device_info(entry))
+    # The main device first, then the Replay device hanging off it.
+    devices = dr.async_get(hass)
+    main = devices.async_get_or_create(config_entry_id=entry.entry_id, **main_device_info(entry))
+    devices.async_get_or_create(
+        config_entry_id=entry.entry_id, **replay_device_info(entry), **replay_parent(entry, main.id)
+    )
     await async_load_saved_replay(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     await controller.async_start()

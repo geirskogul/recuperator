@@ -27,15 +27,26 @@ def replay_device_info(entry: ConfigEntry) -> DeviceInfo:
     """A sub-device holding the replay: its image, button and settings.
 
     It keeps the replay out of the recuperator's own settings on the device
-    page, and shows up there under "Connected devices".
+    page, and shows up there under "Connected devices". The link to the main
+    device is made once, at setup (see replay_parent).
     """
     return DeviceInfo(
         identifiers={(DOMAIN, f"{entry.entry_id}_{REPLAY_DEVICE}")},
         name=f"{entry.title} Replay",
         manufacturer=MANUFACTURER,
         model="Replay",
-        via_device=(DOMAIN, entry.entry_id),
     )
+
+
+def replay_parent(entry: ConfigEntry, main_device_id: str) -> dict:
+    """How to hang the Replay device off the main one, for this Home Assistant.
+
+    Newer versions take the parent's device ID (via_device_id) and deprecate
+    via_device, which older ones still need.
+    """
+    if "via_device_id" in DeviceInfo.__annotations__:
+        return {"via_device_id": main_device_id}
+    return {"via_device": (DOMAIN, entry.entry_id)}
 
 
 class RecuperatorEntity(Entity):
