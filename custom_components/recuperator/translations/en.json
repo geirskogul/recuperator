@@ -232,7 +232,7 @@
       },
       "link": {
         "title": "Linked unit",
-        "description": "A second unit that breathes together with this one, moving air the opposite way so the house stays balanced: while this recuperator exhausts, the linked unit takes air in, and while this one takes air in, the linked unit exhausts.\n\nA full recuperator or a single fan follows this recuperator's phases, pauses and mode. A synced recuperator is another Recuperator you have added, with its own probes, sensors and settings: the two switch together, as the sync rule says. Breathing and Mode stay separate on each, so they only keep in step while both are breathing in Automatic or Timed. Saving restarts the recuperator (and the synced one), unless only the sync rule changed.",
+        "description": "A second unit that breathes together with this one, moving air the opposite way so the house stays balanced: while this recuperator exhausts, the linked unit takes air in, and while this one takes air in, the linked unit exhausts.\n\nA sensorless recuperator or a single fan has no probes, so it simply follows this recuperator's phases, pauses and mode. A synced recuperator is another Recuperator you have added, with its own probes, sensors and settings: the two switch together, as the sync rule says. Breathing and Mode stay separate on each, so they only keep in step while both are breathing in Automatic or Timed. Saving restarts the recuperator (and the synced one), unless only the sync rule changed.",
         "data": {
           "link_type": "Linked unit",
           "link_exhaust_switch": "Linked exhaust fan (inside to outside)",
@@ -241,9 +241,9 @@
           "sync_rule": "Sync rule"
         },
         "data_description": {
-          "link_type": "Full recuperator: a second biphasic unit with its own exhaust and intake fans. Intake fan only: runs while this recuperator exhausts. Exhaust fan only: runs while this recuperator takes air in. Synced recuperator: another Recuperator, with its own probes, that switches together with this one.",
-          "link_exhaust_switch": "Needed for a full recuperator or an exhaust fan. Ignored for an intake fan only.",
-          "link_intake_switch": "Needed for a full recuperator or an intake fan. Ignored for an exhaust fan only.",
+          "link_type": "Sensorless recuperator: a second unit with exhaust and intake fans but no probes of its own; this recuperator decides when it switches. Intake fan only: runs while this recuperator exhausts. Exhaust fan only: runs while this recuperator takes air in. Synced recuperator: another Recuperator you have added, with its own probes; each judges its own phases, and the sync rule decides when the pair switches.",
+          "link_exhaust_switch": "Needed for a sensorless recuperator or an exhaust fan. Ignored for an intake fan only.",
+          "link_intake_switch": "Needed for a sensorless recuperator or an intake fan. Ignored for an exhaust fan only.",
           "link_entry": "Needed for a synced recuperator: the other Recuperator. It is linked back to this one when you save. Ignored for the other kinds.",
           "sync_rule": "For a synced recuperator: when the pair switches. Either is done: as soon as one unit's phase is done, so phases can end a little early. Both are done: once both are; the first keeps its fan running until then. Average: once the two units' progress towards their recovery targets, averaged, gets there. A lead rule: only the lead unit's probes decide. Room protection and the cold limits on either unit always switch the pair."
         }
@@ -565,10 +565,10 @@
     "link_type": {
       "options": {
         "none": "None",
-        "recuperator": "Full recuperator (exhaust and intake fans)",
+        "recuperator": "Sensorless recuperator (two fans, no probes: follows this one)",
         "intake_fan": "Intake fan only",
         "exhaust_fan": "Exhaust fan only",
-        "synced": "Synced recuperator (another Recuperator with its own probes)"
+        "synced": "Synced recuperator (has its own probes: the two decide together)"
       }
     },
     "phase_limit": {

@@ -213,7 +213,7 @@ With **Passive intake** on, the intake fan stays off. After each exhaust, the ro
 
 ### Linked unit
 
-A second unit can breathe in the opposite direction, so the house stays balanced: while this one exhausts, the other takes air in, and the other way round. Set it up under **Configure**, **Linked unit**. It can be a second recuperator with two fans, or just a single intake or exhaust fan. It follows this unit's phases and pauses. A linked full recuperator gets the same interlock as the main one: its two fans never run together.
+A second unit can breathe in the opposite direction, so the house stays balanced: while this one exhausts, the other takes air in, and the other way round. Set it up under **Configure**, **Linked unit**. It can be a *sensorless recuperator* (a second unit with exhaust and intake fans but no probes of its own), or just a single intake or exhaust fan. It has no say: it follows this unit's phases and pauses. A sensorless recuperator gets the same interlock as the main one: its two fans never run together.
 
 #### Synced recuperator
 
@@ -325,6 +325,7 @@ The replay has its own small **Replay** device, listed under *Connected devices*
 
 ## Recent changes
 
+- **0.5.9.** Under **Linked unit**, *Full recuperator* is now called *Sensorless recuperator*, so it is clear which unit decides the cycles: a sensorless one has no probes and follows this one, while a synced one judges its own phases. Existing setups are unchanged.
 - **0.5.8.**
   - A [synced recuperator](#synced-recuperator): two full recuperators, each with its own probes and settings, breathing opposite ways, with a choice of when the pair switches.
   - [Replays](#replays) of a synced pair show both units in one animation.

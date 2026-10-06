@@ -230,7 +230,7 @@ CONF_LINK_EXHAUST_SWITCH = "link_exhaust_switch"
 CONF_LINK_INTAKE_SWITCH = "link_intake_switch"
 
 LINK_NONE = "none"
-LINK_RECUPERATOR = "recuperator"  # its own exhaust and intake fans (biphasic)
+LINK_RECUPERATOR = "recuperator"  # sensorless: its own exhaust and intake fans, no probes
 LINK_INTAKE_FAN = "intake_fan"  # one fan blowing outdoor air in
 LINK_EXHAUST_FAN = "exhaust_fan"  # one fan blowing indoor air out
 LINK_SYNCED = "synced"  # another Recuperator entry, with its own probes and settings
