@@ -27,6 +27,7 @@ from .const import (
     CONF_OUTDOOR_HUMIDITY,
     CONF_OUTDOOR_TEMPERATURE,
     CONF_OUTSIDE_SENSOR,
+    CONF_DIAGRAM_AIRFLOW,
     CONF_PALETTE,
     CONF_PASSIVE_INTAKE,
     CONF_PHASE_LIMIT,
@@ -187,10 +188,10 @@ class RecuperatorOptionsFlow(OptionsFlow):
         )
 
     async def async_step_settings(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """The cycle's settings, in sections; reset puts them back (colours and replay settings are kept)."""
+        """The cycle's settings, in sections; reset puts them back (the diagram's and replay settings are kept)."""
         keep = {
             k: v for k, v in self.config_entry.options.items()
-            if k == CONF_PALETTE or k in REPLAY_KEYS or k in REPLAY_SWITCHES
+            if k in (CONF_PALETTE, CONF_DIAGRAM_AIRFLOW) or k in REPLAY_KEYS or k in REPLAY_SWITCHES
         }
         if user_input is not None:
             if user_input.pop(CONF_RESET, False):
@@ -268,7 +269,7 @@ class RecuperatorOptionsFlow(OptionsFlow):
         return self.async_show_form(step_id="replay", data_schema=vol.Schema(schema))
 
     async def async_step_colours(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        """The diagram's colour scale: a temperature box and a colour picker per stop.
+        """The diagram: its airflow switch, and its colour scale (a temperature box and a colour picker per stop).
 
         Rows are pre-filled with the current scale, with empty rows after them for
         new stops. Clearing a row's temperature removes that stop. Stops are sorted
@@ -277,6 +278,7 @@ class RecuperatorOptionsFlow(OptionsFlow):
         errors: dict[str, str] = {}
         options = dict(self.config_entry.options)
         if user_input is not None:
+            options[CONF_DIAGRAM_AIRFLOW] = bool(user_input.get(CONF_DIAGRAM_AIRFLOW, True))
             if user_input.get(CONF_RESET_COLOURS):
                 options.pop(CONF_PALETTE, None)
                 return self.async_create_entry(data=options)
@@ -304,7 +306,10 @@ class RecuperatorOptionsFlow(OptionsFlow):
                     options[CONF_PALETTE] = palette_to_text(palette)
                 return self.async_create_entry(data=options)
         current = self.config_entry.runtime_data.palette if user_input is None else None
-        schema: dict = {}
+        airflow = self.config_entry.runtime_data.option(CONF_DIAGRAM_AIRFLOW)
+        if user_input is not None:
+            airflow = options[CONF_DIAGRAM_AIRFLOW]
+        schema: dict = {vol.Optional(CONF_DIAGRAM_AIRFLOW, default=airflow): selector.BooleanSelector()}
         for i in range(1, MAX_STOPS + 1):
             if current is not None and i <= len(current):
                 t, c = current[i - 1]

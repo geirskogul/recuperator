@@ -1,11 +1,12 @@
 """Animated replay of the diagram from recorded history ("watch the house breathe").
 
-Builds a self-animating SVG (SMIL animation, no scripts), so it plays in any
-browser and in a Picture Entity card: the pipe's gradient and the readings in its
-ends change frame by frame, the phase label and airflow arrow switch with each
-phase, and under the pipe a history graph of the two probes has a cursor
-sweeping across it in step. A synced recuperator can be drawn as a second panel
-under the first, on the same temperature scale and in step with it.
+Builds a self-animating SVG (SMIL and CSS animation, no scripts), so it plays in
+any browser and in a Picture Entity card: the pipe's gradient and the readings in
+its ends change frame by frame, the phase label, airflow arrow and the streaks of
+air in the pipe switch with each phase, and under the pipe a history graph of the
+two probes has a cursor sweeping across it in step. A synced recuperator can be
+drawn as a second panel under the first, on the same temperature scale and in
+step with it.
 
 Pure Python (no Home Assistant), so it can be tested directly.
 """
@@ -19,6 +20,7 @@ import math
 
 from .diagram import (
     _PIPE,
+    AIRFLOW_DEFS,
     BADGE_Y,
     FAHRENHEIT,
     INSIDE_BADGE_X,
@@ -28,6 +30,7 @@ from .diagram import (
     PALETTE,
     TEXT,
     Palette,
+    airflow_streaks,
     badge_box,
     badge_text_attrs,
     format_temperature,
@@ -155,6 +158,16 @@ def _phase_labels_and_arrows(frames: list[Frame], key_times: str, dur: float) ->
         f'marker-end="url(#head)" opacity="0">{_discrete(visible(lambda f: f.phase == "intake"), key_times, dur)}</line>'
     )
     return "".join(labels) + arrows
+
+
+def _airflow(frames: list[Frame], key_times: str, dur: float) -> str:
+    """Air streaks in the pipe, flowing out while exhausting and in while taking air in (shown like the arrows)."""
+    out = []
+    for phase in ("exhaust", "intake"):
+        shown = ["1" if f.phase == phase else "0" for f in frames]
+        if "1" in shown:
+            out.append(f'<g opacity="0">{_discrete(shown, key_times, dur)}{airflow_streaks(phase)}</g>')
+    return "".join(out)
 
 
 def _temperature_texts(frames: list[Frame], dur: float, unit: str) -> str:
@@ -374,6 +387,7 @@ def render_replay_svg(
     unit: str = "°C",
     linked: list[Frame] | None = None,
     linked_title: str = "",
+    airflow: bool = True,
 ) -> str:
     """An animated SVG of the frames, looping every playback_seconds.
 
@@ -381,6 +395,7 @@ def render_replay_svg(
     cursor sweeping across in step with the pipe. Frame temperatures are in °C;
     they are shown in `unit` (°C or °F). With `linked` (a synced recuperator's
     frames, at the same times) its own pipe and graph follow as a second panel.
+    With `airflow`, streaks of air flow through each pipe while a fan runs.
     """
     if len(frames) < 2:
         raise ValueError("at least two frames are needed")
@@ -398,13 +413,14 @@ def render_replay_svg(
         f'<text x="620" y="40" text-anchor="end" font-size="11" fill="{TEXT}">{count}</text>'
     )
     body = "".join(
-        _panel(i, unit_frames, unit_title, header if i == 0 else "", scale, palette, unit, kt, dur, fmt)
+        _panel(i, unit_frames, unit_title, header if i == 0 else "", scale, palette, unit, kt, dur, fmt, airflow)
         for i, (unit_frames, unit_title) in enumerate(panels)
     )
     height = HEIGHT * len(panels)
     return f"""<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 {height}" width="640" height="{height}" font-family="sans-serif">
 <defs>
 <marker id="head" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="{TEXT}"/></marker>
+{AIRFLOW_DEFS if airflow else ""}
 </defs>
 {body}
 </svg>"""
@@ -412,7 +428,7 @@ def render_replay_svg(
 
 def _panel(
     i: int, frames: list[Frame], title: str, header: str, scale: Scale, palette: Palette, unit: str,
-    kt: str, dur: float, fmt: str,
+    kt: str, dur: float, fmt: str, airflow: bool,
 ) -> str:
     """One unit's pipe and history graph, the i-th panel from the top."""
     separator = f'<line x1="20" y1="0" x2="620" y2="0" stroke="{OUTLINE}" stroke-opacity="0.35"/>' if i else ""
@@ -426,6 +442,7 @@ def _panel(
 {_phase_labels_and_arrows(frames, kt, dur)}
 <g transform="translate(0,{PIPE_DY})">
 <path d="{_PIPE}" fill="url(#temp{i})" stroke="{OUTLINE}" stroke-width="3" stroke-linejoin="round"/>
+{_airflow(frames, kt, dur) if airflow else ""}
 <text x="20" y="92" font-size="15" font-weight="bold" fill="{TEXT}">Inside</text>
 <text x="620" y="92" text-anchor="end" font-size="15" font-weight="bold" fill="{TEXT}">Outside</text>
 </g>

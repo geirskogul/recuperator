@@ -217,8 +217,10 @@ REPLAY_KEYS = ("replay_hours", "replay_playback_seconds", "replay_frames")
 CONF_REPLAY_LINKED = "replay_linked"
 CONF_REPLAY_GIF = "replay_gif"
 REPLAY_SWITCHES = (CONF_REPLAY_LINKED, CONF_REPLAY_GIF)
+# The diagram's (and new replays') streaks of air flowing through the pipe.
+CONF_DIAGRAM_AIRFLOW = "diagram_airflow"
 # On/off settings that start out on (all others start off).
-OPTION_DEFAULTS = {CONF_REPLAY_LINKED: True}
+OPTION_DEFAULTS = {CONF_REPLAY_LINKED: True, CONF_DIAGRAM_AIRFLOW: True}
 
 # Before 0.2.0 one "Timed phase" length served both phases; it seeds the two new ones.
 LEGACY_TIMED_PHASE = "timed_phase_seconds"
