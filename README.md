@@ -156,7 +156,7 @@ Check the entity IDs against your device page; they follow the name you gave the
 
 Breathing, Mode and the learned temperatures all survive a restart. After a restart, it waits up to a minute for the probes, then carries on with an exhaust.
 
-To start over, the **Reset settings to defaults** button resets all the settings and the diagram colours. It never touches your fans, probes, Breathing, Mode or a linked unit.
+To start over, the **Reset settings to defaults** button resets all the settings and the diagram's colours and airflow. It never touches your fans, probes, Breathing, Mode or a linked unit.
 
 ## Extras
 
@@ -245,6 +245,7 @@ The **Diagram** image draws the recuperator as a pipe:
 - The room end is on the left and the outdoor end on the right.
 - The pipe is filled with a colour gradient between the two probe readings, in weather-map colours: purple for bitter cold through blues and greens to orange and red.
 - The readings sit in the pipe's ends, and an arrow shows which way the air is moving.
+- While a fan runs, white streaks of air flow through the pipe. During a passive intake they drift in slowly, and in a pause they stop.
 
 ![Winter](docs/diagram-winter.svg)
 ![Summer](docs/diagram-summer.svg)
@@ -260,11 +261,13 @@ show_state: false
 
 To use your own colours, go to **Configure**, **Diagram colours**. That page has a colour picker for each temperature stop.
 
+The same page has **Airflow in the diagram**, also on the device page as **Diagram airflow**. Turn it off for a still picture, for example on a wall tablet that shows the dashboard all day, or if moving pictures bother you. It applies to the live diagram and to new replays. Browsers such as Chrome ignore the system's *reduce motion* setting inside images, so this switch is the sure way to stop them.
+
 ### Replays
 
 A replay turns recorded history into an animation, like the one at the top of this page:
 
-- The pipe breathes as it did at the time.
+- The pipe breathes as it did at the time, with the air streaming through it.
 - Underneath, a history graph of both probes has a cursor sweeping across it in step with the animation.
 - It's a plain animated SVG, so it plays in any browser.
 
@@ -289,7 +292,7 @@ data:
 
 **A synced pair in one replay.** When the recuperator has a [synced recuperator](#synced-recuperator), its replay draws both: this one on top, the synced one underneath, each with its own pipe and graph. Both graphs share one temperature scale, so you can compare them at a glance, and the cursors sweep in step. To replay just the one, turn off **Include synced recuperator** on the Replay device, untick it on the replay card, or give `include_linked: false` to the action.
 
-**GIF.** An animated SVG plays in browsers and on dashboards, but not in most chat apps, e-mail or phone galleries. For those, turn on **Also save a GIF** on the Replay device, tick it on the replay card, or give `gif: true` to the action. The replay is then also saved as `/config/www/recuperator/<name>-replay.gif`, and the card shows **Download SVG** and **Download GIF** links. A GIF takes a few seconds to draw and keeps at most 200 frames, each stored nearly whole. A 60-second loop of one unit comes to about 3 MB, and a synced pair to about twice that. Fewer **Replay frames** make a smaller file. It's drawn on a white background, because GIFs have no proper transparency.
+**GIF.** An animated SVG plays in browsers and on dashboards, but not in most chat apps, e-mail or phone galleries. For those, turn on **Also save a GIF** on the Replay device, tick it on the replay card, or give `gif: true` to the action. The replay is then also saved as `/config/www/recuperator/<name>-replay.gif`, and the card shows **Download SVG** and **Download GIF** links. A GIF takes a few seconds to draw and keeps at most 200 frames, each stored nearly whole. A 60-second loop of one unit comes to about 3 MB, and a synced pair to about twice that. Fewer **Replay frames** make a smaller file. It's drawn on a white background, because GIFs have no proper transparency. It leaves out the airflow streaks.
 
 The replay has its own small **Replay** device, listed under *Connected devices* on the recuperator's page. It holds the latest animation, a **Create** button and the default settings for new replays, including the GIF and synced-recuperator switches. Each replay is also saved as `/config/www/recuperator/<name>-replay.svg`, which you can open or share. Keep in mind that Home Assistant serves that folder without a login. Replays can only go back as far as your recorder keeps history, which is 10 days by default.
 

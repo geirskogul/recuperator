@@ -156,6 +156,87 @@ def badge(x: float, text: str, y: float = BADGE_Y) -> str:
     return f"{badge_box(x, y)}<text {badge_text_attrs(x, y)}>{escape(text)}</text>"
 
 
+# Airflow: short white streaks flowing through the pipe while a fan runs. Each
+# streak keeps to its own lane, which follows the pipe's shape, and they fade
+# out in the tapers so the readings in the ends stay clear. A lane holds one
+# streak every AIRFLOW_PERIOD, so moving it that far looks the same again.
+AIRFLOW_PERIOD = 160  # px along a lane
+AIRFLOW_SPEED = 110  # px per second
+AIRFLOW_PASSIVE = 0.35  # a passive intake drifts in at this share of the speed
+AIRFLOW_OPACITY = 0.7
+AIRFLOW_PASSIVE_OPACITY = 0.45
+# Each lane: where it runs across the pipe (-1 top wall, 1 bottom wall), its
+# streak's length, its relative speed, and where its streak starts (a share of
+# AIRFLOW_PERIOD). Uneven on purpose, so the air looks loose, not in rows.
+_LANES: tuple[tuple[float, int, float, float], ...] = (
+    (-0.86, 10, 1.07, 0.48),
+    (-0.75, 9, 0.97, 0.92),
+    (-0.60, 9, 0.92, 0.54),
+    (-0.52, 11, 1.10, 0.26),
+    (-0.37, 9, 1.10, 0.81),
+    (-0.26, 12, 0.90, 0.29),
+    (-0.15, 14, 0.88, 0.61),
+    (-0.05, 17, 0.92, 0.25),
+    (0.04, 17, 1.10, 0.01),
+    (0.16, 13, 1.10, 0.51),
+    (0.27, 13, 0.98, 0.16),
+    (0.38, 9, 0.87, 0.46),
+    (0.53, 17, 1.01, 0.47),
+    (0.61, 12, 0.87, 0.91),
+    (0.74, 16, 0.93, 0.36),
+    (0.85, 14, 1.04, 0.20),
+)
+
+# What the streaks need in the document's <defs>: their animations (CSS, which
+# also hides them where reduced motion is asked for and the browser passes that
+# on), and a mask that is opaque along the body and fades out through the tapers.
+AIRFLOW_DEFS = (
+    "<style>"
+    f"@keyframes airflow-out{{to{{stroke-dashoffset:-{AIRFLOW_PERIOD}}}}}"
+    f"@keyframes airflow-in{{to{{stroke-dashoffset:{AIRFLOW_PERIOD}}}}}"
+    ".airflow path{fill:none;stroke:#fff;stroke-width:2.2;stroke-linecap:round}"
+    "@media (prefers-reduced-motion:reduce){.airflow{display:none}}"
+    "</style>"
+    '<linearGradient id="airflow-fade" x1="88" y1="0" x2="552" y2="0" gradientUnits="userSpaceOnUse">'
+    '<stop offset="0" stop-color="#000"/><stop offset="0.086" stop-color="#fff"/>'
+    '<stop offset="0.914" stop-color="#fff"/><stop offset="1" stop-color="#000"/></linearGradient>'
+    '<mask id="airflow-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="640" height="240">'
+    '<rect width="640" height="240" fill="url(#airflow-fade)"/></mask>'
+)
+
+
+def _lane_path(across: float) -> str:
+    """A line through the pipe, `across` of the way from its middle to a wall, narrowing with it in the tapers."""
+    neck, body = 120 + 20 * across, 120 + 60 * across
+    return (
+        f"M 20,{neck:.1f} L 70,{neck:.1f} C 95,{neck:.1f} 100,{body:.1f} 130,{body:.1f} L 510,{body:.1f} "
+        f"C 540,{body:.1f} 545,{neck:.1f} 570,{neck:.1f} L 620,{neck:.1f}"
+    )
+
+
+def airflow_streaks(phase: str, now: float = 0.0, passive: bool = False) -> str:
+    """The streaks for an exhaust (left to right) or an intake (right to left); nothing for other phases.
+
+    Needs AIRFLOW_DEFS in the document. Where each streak is comes from `now`
+    (seconds, any steady clock): a diagram redrawn a few seconds later carries
+    on from where the last one had got to, instead of jumping back.
+    """
+    if phase not in ("exhaust", "intake"):
+        return ""
+    direction = "out" if phase == "exhaust" else "in"
+    drift = passive and phase == "intake"
+    lanes = []
+    for across, length, pace, start in _LANES:
+        speed = AIRFLOW_SPEED * pace * (AIRFLOW_PASSIVE if drift else 1.0)
+        elapsed = ((now * speed + start * AIRFLOW_PERIOD) % AIRFLOW_PERIOD) / speed
+        lanes.append(
+            f'<path d="{_lane_path(across)}" stroke-dasharray="{length} {AIRFLOW_PERIOD - length}" '
+            f'style="animation:airflow-{direction} {AIRFLOW_PERIOD / speed:.3f}s linear -{elapsed:.3f}s infinite"/>'
+        )
+    opacity = AIRFLOW_PASSIVE_OPACITY if drift else AIRFLOW_OPACITY
+    return f'<g class="airflow" mask="url(#airflow-mask)" opacity="{opacity:g}">{"".join(lanes)}</g>'
+
+
 def render_svg(
     outside: float | None,
     inside: float | None,
@@ -164,14 +245,19 @@ def render_svg(
     palette: Palette = PALETTE,
     passive: bool = False,
     unit: str = "°C",
+    airflow: bool = True,
+    now: float = 0.0,
 ) -> str:
     """The whole picture as an SVG document.
 
     Left end: inside (room side of the core, inside probe).
     Right end: outside (outdoor side of the core, outside probe).
     Temperatures are given in °C and shown in `unit` (°C or °F), each in its
-    end of the pipe.
+    end of the pipe. While a fan runs, streaks of air flow through the pipe
+    (unless `airflow` is off); `now` (a timestamp) keeps them moving smoothly
+    from one redraw to the next.
     """
+    streaks = airflow_streaks(phase, now, passive) if airflow else ""
     stops = "".join(
         f'<stop offset="{o:.3f}" stop-color="{c}"/>' for o, c in _stops(inside, outside, palette=palette)
     )
@@ -198,10 +284,12 @@ def render_svg(
 <defs>
 <linearGradient id="temp" x1="20" y1="0" x2="620" y2="0" gradientUnits="userSpaceOnUse">{stops}</linearGradient>
 <marker id="head" viewBox="0 0 10 10" refX="7" refY="5" markerWidth="5" markerHeight="5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" fill="{TEXT}"/></marker>
+{AIRFLOW_DEFS if streaks else ""}
 </defs>
 {arrow}
 <text x="320" y="22" text-anchor="middle" font-size="16" font-weight="bold" fill="{TEXT}">{escape(label)}</text>
 <path d="{_PIPE}" fill="url(#temp)" stroke="{OUTLINE}" stroke-width="3" stroke-linejoin="round"/>
+{streaks}
 <text x="20" y="92" font-size="15" font-weight="bold" fill="{TEXT}">Inside</text>
 <text x="620" y="92" text-anchor="end" font-size="15" font-weight="bold" fill="{TEXT}">Outside</text>
 {badge(INSIDE_BADGE_X, format_temperature(inside, unit))}

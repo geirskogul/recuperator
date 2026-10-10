@@ -184,6 +184,7 @@
         "title": "Diagram colours",
         "description": "Each stop is a temperature and the colour shown at that temperature; colours in between are blended. Pick a colour with the colour box, clear a temperature to remove its stop, or fill in an empty row to add one. The order does not matter: stops are sorted by temperature. At least two stops are needed.",
         "data": {
+          "diagram_airflow": "Airflow in the diagram",
           "stop_01_temperature": "Stop 1: temperature",
           "stop_01_colour": "Stop 1: colour",
           "stop_02_temperature": "Stop 2: temperature",
@@ -227,6 +228,7 @@
           "reset_colours": "Reset colours to defaults"
         },
         "data_description": {
+          "diagram_airflow": "White streaks flow through the pipe while a fan runs, in the live diagram and in new replays. Turn off for a still picture, for example on a wall tablet or if moving images bother you.",
           "reset_colours": "Ignore the rows above and restore the weather-service colour scale."
         }
       },
@@ -314,6 +316,9 @@
       },
       "replay_gif": {
         "name": "Also save a GIF"
+      },
+      "diagram_airflow": {
+        "name": "Diagram airflow"
       }
     },
     "select": {

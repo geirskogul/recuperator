@@ -194,6 +194,22 @@ async def test_colours_page_saves_a_palette(hass: HomeAssistant, entry) -> None:
     assert entry.options["diagram_palette"] == "0 #0000ff\n30 #ff0000"
 
 
+async def test_colours_page_switches_the_airflow(hass: HomeAssistant, entry) -> None:
+    result = await _open_options(hass, entry, "colours")
+    airflow = next(key for key in result["data_schema"].schema if str(key) == "diagram_airflow")
+    assert airflow.default() is True  # on until switched off
+    await hass.config_entries.options.async_configure(
+        result["flow_id"], {"diagram_airflow": False, "reset_colours": True}
+    )
+    assert entry.options["diagram_airflow"] is False
+    assert "diagram_palette" not in entry.options
+    # saving the cycle's settings, or resetting them there, keeps it
+    for answer in ({}, {"reset_to_defaults": True}):
+        result = await _open_options(hass, entry, "settings")
+        await hass.config_entries.options.async_configure(result["flow_id"], answer)
+        assert entry.options["diagram_airflow"] is False
+
+
 async def test_colours_page_needs_two_stops(hass: HomeAssistant, entry) -> None:
     result = await _open_options(hass, entry, "colours")
     result = await hass.config_entries.options.async_configure(

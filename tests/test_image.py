@@ -28,6 +28,19 @@ async def test_diagram_shows_the_probes(hass: HomeAssistant, hass_client, fans) 
     assert "Stopped" in svg
 
 
+async def test_diagram_airflow_follows_its_switch(hass: HomeAssistant, hass_client, entry) -> None:
+    await hass.services.async_call("switch", "turn_on", {"entity_id": "switch.breather_breathing"}, blocking=True)
+    await hass.async_block_till_done()
+    svg = await _fetch(hass, hass_client, "image.breather_diagram")
+    assert "Exhaust" in svg and 'class="airflow"' in svg
+
+    await hass.services.async_call("switch", "turn_off", {"entity_id": "switch.breather_diagram_airflow"}, blocking=True)
+    await hass.async_block_till_done()
+    assert entry.options["diagram_airflow"] is False
+    svg = await _fetch(hass, hass_client, "image.breather_diagram")
+    assert "Exhaust" in svg and "airflow" not in svg
+
+
 async def test_replay_image_starts_with_a_placeholder(hass: HomeAssistant, hass_client, fans, probes, tmp_path) -> None:
     hass.config.config_dir = str(tmp_path)
     await setup_entry(hass, make_entry())

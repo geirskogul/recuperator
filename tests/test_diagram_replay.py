@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import re
 
 import pytest
 
-from custom_components.recuperator.diagram import format_temperature, parse_palette, render_svg
+from custom_components.recuperator.diagram import (
+    AIRFLOW_PASSIVE,
+    AIRFLOW_PASSIVE_OPACITY,
+    format_temperature,
+    parse_palette,
+    render_svg,
+)
 from custom_components.recuperator.replay import (
     CHART_BOTTOM,
     CHART_TOP,
@@ -49,6 +56,50 @@ def test_diagram_readings_sit_in_boxes_in_the_pipe_ends() -> None:
     assert '<text x="64" y="125" text-anchor="middle"' in svg
     assert '<text x="576" y="125" text-anchor="middle"' in svg
     assert 'y="206"' not in svg  # no longer under the pipe
+
+
+def _streaks(svg: str) -> list[tuple[str, float, float]]:
+    """Each air streak's (direction, loop seconds, seconds into the loop) from its CSS animation."""
+    return [
+        (direction, float(duration), float(elapsed))
+        for direction, duration, elapsed in re.findall(r"animation:airflow-(out|in) ([\d.]+)s linear -([\d.]+)s", svg)
+    ]
+
+
+def test_diagram_draws_airflow_while_a_fan_runs() -> None:
+    exhaust = render_svg(5.0, 20.0, "exhaust")
+    assert 'class="airflow"' in exhaust and "@keyframes airflow-out" in exhaust
+    assert {d for d, _dur, _el in _streaks(exhaust)} == {"out"}  # left to right
+    assert {d for d, _dur, _el in _streaks(render_svg(5.0, 20.0, "intake"))} == {"in"}
+    for phase in ("pause", "stopped"):
+        still = render_svg(5.0, 20.0, phase)
+        assert "airflow" not in still and "<style>" not in still  # no streaks, nor their definitions
+
+
+def test_diagram_airflow_can_be_turned_off() -> None:
+    svg = render_svg(5.0, 20.0, "exhaust", airflow=False)
+    assert "airflow" not in svg
+    assert "Exhaust" in svg  # the arrow and label stay
+
+
+def test_passive_intake_drifts_slowly() -> None:
+    powered = _streaks(render_svg(5.0, 20.0, "intake"))
+    passive = _streaks(render_svg(5.0, 20.0, "intake", passive=True))
+    assert len(passive) == len(powered)
+    for (_d, fast, _e), (_d2, slow, _e2) in zip(powered, passive):
+        assert slow == pytest.approx(fast / AIRFLOW_PASSIVE, rel=0.01)
+    assert f'opacity="{AIRFLOW_PASSIVE_OPACITY:g}"' in render_svg(5.0, 20.0, "intake", passive=True)
+
+
+def test_airflow_carries_on_from_one_redraw_to_the_next() -> None:
+    """A diagram drawn 3 s later has every streak 3 s further along, not back at the start."""
+    now = 1_791_600_000.0
+    before = _streaks(render_svg(5.0, 20.0, "exhaust", now=now))
+    after = _streaks(render_svg(5.0, 20.0, "exhaust", now=now + 3))
+    assert len(before) > 1
+    for (_d, duration, then), (_d2, _dur2, later) in zip(before, after):
+        assert later == pytest.approx((then + 3) % duration, abs=0.002)
+    assert len({elapsed for _d, _dur, elapsed in before}) > 1  # the streaks do not all start together
 
 
 def test_palette_round_trip_and_errors() -> None:
@@ -149,6 +200,21 @@ def test_replay_with_a_synced_recuperator_has_two_panels() -> None:
     assert svg.count('fill="none" stroke=') == 4  # inside and outside lines for each
     assert ">-10 °C</text>" in svg  # one scale for both: the workshop's cold outside sets the bottom
     assert svg.count(">-10 °C</text>") == 2
+
+
+def test_replay_streaks_flow_with_each_phase() -> None:
+    svg = render_replay_svg(frames(), 30)
+    # one group of streaks per direction, each shown only while its phase is on (like the arrows)
+    assert svg.count('class="airflow"') == 2
+    assert '<g opacity="0"><animate attributeName="opacity" values="1;1;0;0;0;1;1;0;0;0"' in svg
+    assert '<g opacity="0"><animate attributeName="opacity" values="0;0;0;1;1;0;0;0;1;1"' in svg
+    assert {d for d, _dur, _el in _streaks(svg)} == {"out", "in"}
+
+    pair = render_replay_svg(frames(), 30, linked=frames())
+    assert pair.count('class="airflow"') == 4 and pair.count("<style>") == 1
+
+    still = render_replay_svg(frames(), 30, airflow=False)
+    assert "airflow" not in still
 
 
 def test_replay_linked_frames_must_match() -> None:

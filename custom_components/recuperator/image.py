@@ -10,6 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
+from .const import CONF_DIAGRAM_AIRFLOW
 from .diagram import render_svg
 from .replay import PLACEHOLDER
 from .entity import REPLAY_DEVICE, RecuperatorEntity
@@ -73,7 +74,8 @@ class RecuperatorDiagram(RecuperatorEntity, ImageEntity):
         c = self._controller
         inside, outside = c.probes()
         return render_svg(
-            outside, inside, c.logic.phase, self._entry.title, c.palette, c.logic.passive, c.display_unit
+            outside, inside, c.logic.phase, self._entry.title, c.palette, c.logic.passive, c.display_unit,
+            airflow=c.option(CONF_DIAGRAM_AIRFLOW), now=dt_util.utcnow().timestamp(),
         ).encode()
 
 

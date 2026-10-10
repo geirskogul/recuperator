@@ -15,7 +15,14 @@ from homeassistant.helpers import config_validation as cv, entity_registry as er
 from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
-from .const import CONF_INSIDE_SENSOR, CONF_OUTSIDE_SENSOR, CONF_REPLAY_GIF, CONF_REPLAY_LINKED, DOMAIN
+from .const import (
+    CONF_DIAGRAM_AIRFLOW,
+    CONF_INSIDE_SENSOR,
+    CONF_OUTSIDE_SENSOR,
+    CONF_REPLAY_GIF,
+    CONF_REPLAY_LINKED,
+    DOMAIN,
+)
 from .controller import probe_celsius
 from .gif import render_replay_gif
 from .replay import MAX_FRAMES, Frame, frame_times, render_replay_svg, sample
@@ -190,7 +197,7 @@ async def async_create_replay(
         "linked": linked[0] if linked else None,
         "linked_title": partner.title if linked else "",
     }
-    svg = render_replay_svg(frames, **drawing)
+    svg = render_replay_svg(frames, airflow=controller.option(CONF_DIAGRAM_AIRFLOW), **drawing)
     gif = None
     if controller.option(CONF_REPLAY_GIF):
         # Drawn pixel by pixel: seconds of work, so not in the event loop.

@@ -12,7 +12,14 @@ from homeassistant.helpers.restore_state import RestoreEntity
 
 from homeassistant.helpers import entity_registry as er
 
-from .const import CONF_DRYING, CONF_DRYING_EXHAUST_ONLY, CONF_REPLAY_GIF, CONF_REPLAY_LINKED, DOMAIN
+from .const import (
+    CONF_DIAGRAM_AIRFLOW,
+    CONF_DRYING,
+    CONF_DRYING_EXHAUST_ONLY,
+    CONF_REPLAY_GIF,
+    CONF_REPLAY_LINKED,
+    DOMAIN,
+)
 from .entity import REPLAY_DEVICE, RecuperatorEntity
 
 
@@ -23,6 +30,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddE
         PassiveIntakeSwitch(c, entry, "passive_intake"),
         OptionSwitch(c, entry, CONF_DRYING, "mdi:water-off-outline"),
         OptionSwitch(c, entry, CONF_DRYING_EXHAUST_ONLY, "mdi:fan-chevron-up"),
+        OptionSwitch(c, entry, CONF_DIAGRAM_AIRFLOW, "mdi:weather-windy"),
         OptionSwitch(c, entry, CONF_REPLAY_GIF, "mdi:file-gif-box", REPLAY_DEVICE),
     ]
     # Drawing the synced recuperator too only makes sense while there is one.
@@ -74,7 +82,7 @@ class PassiveIntakeSwitch(RecuperatorEntity, SwitchEntity):
 
 
 class OptionSwitch(RecuperatorEntity, SwitchEntity):
-    """An on/off setting (Drying, Drying exhaust only, the replay's); applies on the next tick."""
+    """An on/off setting (Drying, Drying exhaust only, Diagram airflow, the replay's); applies on the next tick."""
 
     _attr_entity_category = EntityCategory.CONFIG
 
