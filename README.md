@@ -278,7 +278,7 @@ type: custom:recuperator-replay-card
 entity: image.basement_breather_replay_animation
 ```
 
-You'll also find it in the dashboard editor's card list as *Recuperator replay*.
+You'll also find it in the dashboard editor's card list as *Recuperator replay*. The card adds itself to your dashboards' resources (Settings, Dashboards, Resources) as `/recuperator/recuperator-replay-card.js`, so leave that entry in place. It's taken out again when you remove the last recuperator.
 
 You can also make one from an automation or script, for example a fresh replay of the last day every morning:
 
@@ -324,10 +324,12 @@ The replay has its own small **Replay** device, listed under *Connected devices*
   - `mode`: you're in Timed mode.
 - **It's stuck with a fan off.** The other fan's switch probably still reports *on*, and the interlock is waiting for it.
 - **More detail.** Turn on debug logging for `custom_components.recuperator`, and every phase change is logged with its reason.
+- **The replay card says *Custom element doesn't exist*,** typically in the Companion app. Update to 0.5.12 or later. If it still happens, the app is showing an old copy of the dashboard: in the app's settings, under Troubleshooting, choose *Reset frontend cache*.
 - **Reporting a bug.** Download the diagnostics from the integration's menu and attach them to an [issue](https://github.com/geirskogul/recuperator/issues).
 
 ## Recent changes
 
+- **0.5.12.** The replay card loads reliably in the Companion app. It now adds itself to your dashboards' resources, which dashboards fetch from Home Assistant every time they open. Before, it came with the page, which the app can keep an old copy of. That showed *Custom element doesn't exist*, often only on the phone.
 - **0.5.11.** While a fan runs, white streaks of air flow through the pipe in the [diagram](#the-diagram) and in [replays](#replays), slowly during a passive intake. **Diagram airflow** turns them off.
 - **0.5.10.** Ready for Home Assistant 2026.10: the Replay device is linked to its recuperator the new way, so there is no deprecation warning in the log. Older versions keep working.
 - **0.5.9.** Under **Linked unit**, *Full recuperator* is now called *Sensorless recuperator*, so it is clear which unit decides the cycles: a sensorless one has no probes and follows this one, while a synced one judges its own phases. Existing setups are unchanged.
