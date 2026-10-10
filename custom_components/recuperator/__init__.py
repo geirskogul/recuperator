@@ -16,7 +16,7 @@ from homeassistant.helpers import config_validation as cv, device_registry as dr
 from homeassistant.helpers.event import async_track_entity_registry_updated_event
 from homeassistant.helpers.typing import ConfigType
 
-from .card import async_register_card
+from .card import async_register_card, async_remove_card_resource
 from .const import (
     CONF_LINK_ENTRY,
     CONF_LINK_TYPE,
@@ -134,7 +134,12 @@ async def _async_options_updated(hass: HomeAssistant, entry: RecuperatorConfigEn
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: RecuperatorConfigEntry) -> None:
-    """A removed recuperator leaves its synced recuperator unlinked, breathing on its own."""
+    """A removed recuperator leaves its synced recuperator unlinked, breathing on its own.
+
+    With the last one gone, the Replay card leaves the dashboards' resources too.
+    """
+    if not [e for e in hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id]:
+        await async_remove_card_resource(hass)
     for other in hass.config_entries.async_entries(DOMAIN):
         if other.data.get(CONF_LINK_ENTRY) == entry.entry_id:
             data = {k: v for k, v in other.data.items() if k not in (CONF_LINK_ENTRY, CONF_SYNC_RULE)}

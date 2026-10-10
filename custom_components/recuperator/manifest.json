@@ -4,6 +4,7 @@
   "after_dependencies": [
     "frontend",
     "http",
+    "lovelace",
     "recorder"
   ],
   "codeowners": [
@@ -18,5 +19,5 @@
   "iot_class": "calculated",
   "issue_tracker": "https://github.com/geirskogul/recuperator/issues",
   "requirements": [],
-  "version": "0.5.11"
+  "version": "0.5.12"
 }
