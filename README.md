@@ -200,7 +200,7 @@ A few things still come first:
 
 - **Minimum phase.** A limited phase always runs at least that long.
 - **Frost protection.** In cold weather the exhaust keeps running at least as long as the intake, so *Limited exhaust* pauses until it warms up.
-- **Passive intakes** are never limited.
+- **Passive intakes** the room refills on its own are never limited. One that a linked unit pulls in is limited as usual (see [Passive intake](#passive-intake)).
 - **After an intake that ran out of heat,** Limited exhaust sits out one exhaust and lets it run by its own rules. That covers intakes ended by *Supply colder than room*, *Supply below floor* or *Cold limit*. Such an intake was short because the core had little heat to give. Cutting the next exhaust to match would store even less, and the breaths would shrink one after another down to *Minimum phase*. The Phase sensor's `phase_limit` attribute shows `paused` when this happens.
 
 ### Passive intake
@@ -211,9 +211,13 @@ With **Passive intake** on, the intake fan stays off. After each exhaust, the ro
 - **Passive inflow** turns on once the inside probe shows outdoor air really coming in. **Passive inflow delay** says how long that took.
 - If Passive inflow never comes on, the air is getting in somewhere else.
 
+**With a [linked unit](#linked-unit).** If a linked unit exhausts while this one takes air in (a sensorless recuperator, a single exhaust fan, or a synced recuperator), that exhaust pulls the air in through this core. Such a passive intake counts as an ordinary intake whose fan stays off. It lasts no longer than *Maximum phase* (or *Timed intake*), the phase limit applies to it, and it counts towards Heat recovery. With a sensorless recuperator, its intake fan rests as well, so the two units take turns exhausting, each drawing air in through the other.
+
+If this unit's exhausts still come out shorter than the linked unit's, less air comes in through this core than the linked unit blows out; the rest comes in elsewhere. To make both exhausts as long as you like, set *Minimum phase* to that length, and *Phase limit* to *Limited intake* at 100 %. Use the two together: the phase limit alone lets the breaths shrink.
+
 ### Linked unit
 
-A second unit can breathe in the opposite direction, so the house stays balanced: while this one exhausts, the other takes air in, and the other way round. Set it up under **Configure**, **Linked unit**. It can be a *sensorless recuperator* (a second unit with exhaust and intake fans but no probes of its own), or just a single intake or exhaust fan. It has no say: it follows this unit's phases and pauses. A sensorless recuperator gets the same interlock as the main one: its two fans never run together.
+A second unit can breathe in the opposite direction, so the house stays balanced: while this one exhausts, the other takes air in, and the other way round. Set it up under **Configure**, **Linked unit**. It can be a *sensorless recuperator* (a second unit with exhaust and intake fans but no probes of its own), or just a single intake or exhaust fan. It has no say: it follows this unit's phases and pauses. A sensorless recuperator gets the same interlock as the main one: its two fans never run together. With [Passive intake](#passive-intake) on, its intake fan rests too, and the two take turns exhausting.
 
 #### Synced recuperator
 
@@ -329,6 +333,7 @@ The replay has its own small **Replay** device, listed under *Connected devices*
 
 ## Recent changes
 
+- **0.5.13.** Passive intake with a linked unit: an intake that the linked unit's exhaust pulls in now counts as an ordinary intake with its fan off. Before, it could run up to *Passive intake maximum* while this unit's exhausts stopped at *Maximum phase*, so one phase was always short. A sensorless recuperator's intake fan now rests too, so the two take turns exhausting. See [Passive intake](#passive-intake).
 - **0.5.12.** The replay card loads reliably in the Companion app. It now adds itself to your dashboards' resources, which dashboards fetch from Home Assistant every time they open. Before, it came with the page, which the app can keep an old copy of. That showed *Custom element doesn't exist*, often only on the phone.
 - **0.5.11.** While a fan runs, white streaks of air flow through the pipe in the [diagram](#the-diagram) and in [replays](#replays), slowly during a passive intake. **Diagram airflow** turns them off.
 - **0.5.10.** Ready for Home Assistant 2026.10: the Replay device is linked to its recuperator the new way, so there is no deprecation warning in the log. Older versions keep working.

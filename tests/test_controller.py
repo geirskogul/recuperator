@@ -70,6 +70,38 @@ async def test_linked_recuperator_breathes_the_other_way(hass: HomeAssistant, fa
     assert hass.states.get("sensor.breather_linked_unit").state == "exhaust"
 
 
+async def start_passive(hass: HomeAssistant, freezer, link: dict) -> None:
+    await setup_entry(hass, make_entry(link, options={**TIMED, "passive_intake": True}))
+    await hass.services.async_call("select", "select_option", {"entity_id": "select.breather_mode", "option": "timed"}, blocking=True)
+    await hass.services.async_call("switch", "turn_on", {"entity_id": "switch.breather_breathing"}, blocking=True)
+    await tick(hass, freezer, 2)
+
+
+async def test_passive_intake_with_a_sensorless_recuperator_takes_turns_exhausting(
+    hass: HomeAssistant, fans, probes, freezer
+) -> None:
+    """Each unit's exhaust pulls air in through the other, both intake fans resting, and the
+    passive intake (the linked unit's exhaust) is as long as any intake, not Passive intake maximum."""
+    await start_passive(hass, freezer, {"link_type": "recuperator", "link_exhaust_switch": LINK_EXHAUST, "link_intake_switch": LINK_INTAKE})
+    assert on(hass) == {EXHAUST}
+    assert hass.states.get("sensor.breather_linked_unit").state == "intake"
+    await tick(hass, freezer, 12)
+    assert on(hass) == {LINK_EXHAUST}
+    assert hass.states.get("sensor.breather_linked_unit").state == "exhaust"
+    await tick(hass, freezer, 20)  # Timed intake (20 s) later, the next exhaust
+    assert on(hass) == {EXHAUST}
+
+
+async def test_passive_intake_keeps_a_linked_intake_fan(hass: HomeAssistant, fans, probes, freezer) -> None:
+    """A single linked intake fan still balances the exhaust; nothing pulls the passive intake in."""
+    await start_passive(hass, freezer, {"link_type": "intake_fan", "link_intake_switch": LINK_INTAKE})
+    assert on(hass) == {EXHAUST, LINK_INTAKE}
+    await tick(hass, freezer, 12)
+    assert on(hass) == set()  # the room refills on its own...
+    await tick(hass, freezer, 30)
+    assert on(hass) == set()  # ...for as long as Passive intake maximum allows
+
+
 async def test_linked_intake_fan_runs_during_exhaust_only(hass: HomeAssistant, fans, probes, freezer) -> None:
     await start_timed(hass, freezer, {"link_type": "intake_fan", "link_intake_switch": LINK_INTAKE})
     assert on(hass) == {EXHAUST, LINK_INTAKE}

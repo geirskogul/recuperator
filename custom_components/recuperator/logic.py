@@ -139,7 +139,13 @@ class BreathingLogic:
         self.frost_risk: bool = False
         # Passive intake: the intake phase runs with the intake fan off.
         self.passive: bool = False  # the running (or last) intake is passive
-        self.last_intake_passive: bool = False
+        # Something exhausts while this unit takes air in: a linked unit's exhaust fan,
+        # or a synced recuperator (set by the controller). A passive intake is then
+        # pulled in by it, and counts as an ordinary intake whose fan stays off.
+        # Without it the room refills on its own, which can take long and says
+        # nothing about how much air came in.
+        self.assisted: bool = False
+        self.last_intake_refilled: bool = False  # the last intake was passive and unassisted
         self.last_intake_limited: bool = False  # the last intake was cut short by the phase limit
         self.last_intake_drained: bool = False  # the last intake ended because the core ran out of heat
         self.passive_flow: bool | None = None  # inflow seen during the running/last passive intake
@@ -184,6 +190,10 @@ class BreathingLogic:
             return MODE_EXHAUST_ONLY
         return mode
 
+    def _refills(self) -> bool:
+        """The running (or last) intake is passive with nothing pulling air in: the room refills on its own."""
+        return self.passive and not self.assisted
+
     # -- heat recovery -------------------------------------------------------------
 
     @property
@@ -207,10 +217,10 @@ class BreathingLogic:
         self._supply_last = None if inside is None else (now, inside)
 
     def _record_efficiency(self, now: float, inside: float | None) -> None:
-        """At the end of a powered intake: (supply - outdoor) / (room - outdoor), averaged over the intake."""
+        """At the end of an intake that moved air: (supply - outdoor) / (room - outdoor), averaged over it."""
         self._sample_supply(now, inside)
         room, outdoor = self.room_air(), self.outdoor_air()
-        if self.passive or self._supply_seconds <= 0 or room is None or outdoor is None:
+        if self._refills() or self._supply_seconds <= 0 or room is None or outdoor is None:
             return
         if abs(room - outdoor) < EFFICIENCY_MIN_GAP:
             return  # too little difference to judge
@@ -360,8 +370,8 @@ class BreathingLogic:
         """
         elapsed = now - (now if self.phase_started is None else self.phase_started)
         if self.timed_reason != TIMED_NOT:
-            passive = self.phase == PHASE_INTAKE and self.passive
-            length = s.passive_intake_max_seconds if passive else s.timed_seconds(self.phase)
+            refill = self.phase == PHASE_INTAKE and self._refills()
+            length = s.passive_intake_max_seconds if refill else s.timed_seconds(self.phase)
             return elapsed / length
         ref, far = self._ref_far(self.phase, inside, outside)
         if ref is None or far is None:
@@ -409,7 +419,7 @@ class BreathingLogic:
                 )
             else:
                 self.last_intake_seconds = duration
-                self.last_intake_passive = self.passive
+                self.last_intake_refilled = self._refills()
                 self.last_intake_limited = reason in (REASON_PHASE_LIMIT, REASON_DRYING)
                 self.last_intake_drained = reason in DRAINED_INTAKE
                 if outside is not None:
@@ -465,6 +475,7 @@ class BreathingLogic:
         passive = self.phase == PHASE_INTAKE and self.passive
         if passive:
             self._watch_passive_flow(elapsed, s, inside)
+        refill = passive and not self.assisted
 
         # Room protection: during intake the inside probe reads the air entering the
         # room. After the minimum phase (so fresh air has had time to arrive), end
@@ -485,17 +496,17 @@ class BreathingLogic:
         if self.timed_reason != TIMED_NOT:
             if self.cold and self.phase == PHASE_INTAKE and elapsed >= s.cold_intake_max_seconds:
                 return REASON_COLD_LIMIT  # even timed intake respects the cold limit
-            limit, limit_reason = self._phase_limit(s, passive)
+            limit, limit_reason = self._phase_limit(s, refill)
             if limit is not None and elapsed >= limit:
                 return limit_reason
-            length = s.passive_intake_max_seconds if passive else s.timed_seconds(self.phase)
+            length = s.passive_intake_max_seconds if refill else s.timed_seconds(self.phase)
             return REASON_TIMED if elapsed >= length else None
 
         lower = s.min_phase_seconds
-        cap = max(s.passive_intake_max_seconds if passive else s.max_phase_seconds, lower)
+        cap = max(s.passive_intake_max_seconds if refill else s.max_phase_seconds, lower)
         cap_reason = REASON_MAX_TIME
         cold_exhaust = bool(
-            self.cold and self.phase == PHASE_EXHAUST and self.last_intake_seconds and not self.last_intake_passive
+            self.cold and self.phase == PHASE_EXHAUST and self.last_intake_seconds and not self.last_intake_refilled
         )
         if self.cold and self.phase == PHASE_INTAKE and s.cold_intake_max_seconds < cap:
             cap, cap_reason = s.cold_intake_max_seconds, REASON_COLD_LIMIT
@@ -513,7 +524,7 @@ class BreathingLogic:
                 if cold_cap < cap:
                     cap, cap_reason = cold_cap, REASON_COLD_LIMIT
             lower = min(max(lower, self.last_intake_seconds), cap)
-        limit, limit_reason = (None, None) if cold_exhaust else self._phase_limit(s, passive)
+        limit, limit_reason = (None, None) if cold_exhaust else self._phase_limit(s, refill)
         if limit is not None and limit < cap:
             cap, cap_reason = limit, limit_reason
 
@@ -538,12 +549,13 @@ class BreathingLogic:
             return REASON_SETTLED
         return None
 
-    def _limit_share(self, s: Settings, passive: bool) -> tuple[float | None, str | None]:
+    def _limit_share(self, s: Settings, refill: bool) -> tuple[float | None, str | None]:
         """(share of the other phase's last length in %, reason) for the running phase, if limited.
 
         Limited intake, and drying, keep an intake shorter than the last exhaust
-        (the smaller share wins); limited exhaust does the reverse. Passive
-        intakes are neither limited nor used as a measure (the intake fan is off).
+        (the smaller share wins); limited exhaust does the reverse. A passive
+        intake the room refills on its own (nothing pulls air in) is neither
+        limited nor used as a measure; one a linked unit pulls in counts as usual.
 
         Limited exhaust skips the exhaust after an intake that ran the core out of
         heat: that intake was short because the exhaust before it stored little
@@ -551,7 +563,7 @@ class BreathingLogic:
         breaths would shrink one after another down to the minimum phase.
         """
         shares: list[tuple[float, str]] = []
-        if self.phase == PHASE_INTAKE and not passive:
+        if self.phase == PHASE_INTAKE and not refill:
             if s.phase_limit == LIMIT_INTAKE:
                 shares.append((s.phase_limit_percent, REASON_PHASE_LIMIT))
             if self.drying.intake_share is not None:
@@ -561,19 +573,19 @@ class BreathingLogic:
         return min(shares) if shares else (None, None)
 
     def phase_limit_status(self, s: Settings) -> str:
-        """off, active, or paused: Limited exhaust waits out the exhaust after a drained or passive intake."""
+        """off, active, or paused: Limited exhaust waits out the exhaust after a drained or refilled intake."""
         if s.phase_limit == LIMIT_OFF:
             return "off"
-        if s.phase_limit == LIMIT_EXHAUST and (self.last_intake_drained or self.last_intake_passive):
+        if s.phase_limit == LIMIT_EXHAUST and (self.last_intake_drained or self.last_intake_refilled):
             return "paused"
         return "active"
 
-    def _phase_limit(self, s: Settings, passive: bool) -> tuple[float | None, str | None]:
+    def _phase_limit(self, s: Settings, refill: bool) -> tuple[float | None, str | None]:
         """(the longest the running phase may last, why) under the phase limit or drying, if either applies.
 
         Never below the minimum phase, which protects the fans and relays.
         """
-        share, reason = self._limit_share(s, passive)
+        share, reason = self._limit_share(s, refill)
         if share is None:
             return None, None
         other = self.last_exhaust_seconds if self.phase == PHASE_INTAKE else self.last_intake_seconds

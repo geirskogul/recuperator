@@ -379,3 +379,55 @@ def test_limited_exhaust_pauses_after_a_drained_intake_only() -> None:
     # Limited intake is never paused: it caps the intake, which cannot drain the core further.
     logic.last_intake_drained = True
     assert logic.phase_limit_status(Settings.from_mapping({"phase_limit": "limited_intake"})) == "active"
+
+
+# -- passive intake: the room refilling on its own, or pulled in by a linked unit --------------
+
+PASSIVE = {
+    "passive_intake": True, "min_phase_seconds": 10, "max_phase_seconds": 60, "passive_intake_max_seconds": 600,
+    "timed_exhaust_seconds": 30, "timed_intake_seconds": 30, "pause_seconds": 1, "similar_band": 0,
+}
+
+
+def first_passive_intake(assisted: bool, mode: str = "automatic", **options) -> tuple[BreathingLogic, Settings]:
+    """Breathe through one exhaust and one passive intake. The probes never move, so only limits end phases."""
+    s = Settings.from_mapping({**PASSIVE, **options})
+    logic = BreathingLogic()
+    logic.assisted = assisted
+    logic.start(0, mode, s, 20, 5)
+    changes = run(logic, mode, s, 1, 1300, steady(20, 5))
+    assert [phase for _t, phase in changes][:3] == [PHASE_PAUSE, PHASE_INTAKE, PHASE_PAUSE]
+    return logic, s
+
+
+def test_refilling_passive_intake_may_run_long() -> None:
+    """Nothing pulls air in: the room refills on its own, up to Passive intake maximum."""
+    logic, _s = first_passive_intake(assisted=False)
+    assert logic.last_exhaust_seconds == 60 and logic.last_intake_seconds == 600
+    assert logic.heat_recovery is None  # an intake that moved no air says nothing about the core
+
+
+def test_pulled_passive_intake_is_an_ordinary_intake() -> None:
+    """A linked unit's exhaust pulls the air in: Maximum phase, as for the exhaust, and Heat recovery counts."""
+    logic, _s = first_passive_intake(assisted=True)
+    assert logic.last_exhaust_seconds == 60 and logic.last_intake_seconds == 60
+    assert logic.last_reason == REASON_MAX_TIME
+    assert logic.heat_recovery == 100
+
+
+@pytest.mark.parametrize(("assisted", "length"), [(False, 600), (True, 30)])
+def test_timed_passive_intake(assisted: bool, length: int) -> None:
+    logic, _s = first_passive_intake(assisted, "timed")
+    assert logic.last_intake_seconds == length
+
+
+@pytest.mark.parametrize(("assisted", "length"), [(False, 600), (True, 30)])
+def test_phase_limit_applies_to_pulled_passive_intakes_only(assisted: bool, length: int) -> None:
+    logic, _s = first_passive_intake(assisted, phase_limit="limited_intake", phase_limit_percent=50)
+    assert logic.last_intake_seconds == length  # half the 60 s exhaust, or not limited
+
+
+@pytest.mark.parametrize(("assisted", "status"), [(False, "paused"), (True, "active")])
+def test_limited_exhaust_pauses_after_a_refilled_intake_only(assisted: bool, status: str) -> None:
+    logic, s = first_passive_intake(assisted, phase_limit="limited_exhaust")
+    assert logic.phase_limit_status(s) == status

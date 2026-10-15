@@ -359,10 +359,12 @@ class RecuperatorController:
             return
         self._maybe_start(now)
         partner = self.synced()
+        self.logic.assisted = self.intake_assisted(partner)
         if partner is None:
             changed = self.logic.step(now, self.mode, self.settings, *self.probes())
         elif self.entry.entry_id < partner.entry.entry_id:
             # One of the two (always the same one) steps the pair on its tick.
+            partner.logic.assisted = partner.intake_assisted(self)
             changed = step_pair(now, self.unit(), partner.unit(), self.sync_rule)
             if changed:
                 await partner._async_apply()
@@ -415,6 +417,14 @@ class RecuperatorController:
                 return None
         return partner
 
+    def intake_assisted(self, partner: RecuperatorController | None) -> bool:
+        """Does something exhaust while this unit takes air in (a linked unit, or the synced recuperator)?
+
+        A passive intake is then pulled in through this core, and the logic
+        treats it as an ordinary intake whose fan stays off.
+        """
+        return bool(self.link_exhaust_switch) or partner is not None
+
     def unit(self) -> Unit:
         """This recuperator as one unit of a synced pair, as it stands now."""
         return Unit(self.logic, self.mode, self.settings, *self.probes())
@@ -431,8 +441,11 @@ class RecuperatorController:
         }
         # The linked unit moves air the other way, so the house stays balanced.
         # During a passive intake its exhaust is what draws air in through this core.
+        # With passive intake on, a sensorless recuperator's intake fan rests too:
+        # this unit's exhaust draws air in through it, and the two take turns exhausting.
         if self.link_intake_switch:
-            wanted[self.link_intake_switch] = phase == PHASE_EXHAUST
+            linked_passive = self.passive_intake and self.link_type == LINK_RECUPERATOR
+            wanted[self.link_intake_switch] = phase == PHASE_EXHAUST and not linked_passive
         if self.link_exhaust_switch:
             wanted[self.link_exhaust_switch] = phase == PHASE_INTAKE
         return wanted
@@ -545,6 +558,10 @@ class RecuperatorController:
             partner = self.partner()
             phase = partner.logic.phase if partner is not None and partner.enabled else None
             return {PHASE_EXHAUST: LINKED_EXHAUST, PHASE_INTAKE: LINKED_INTAKE}.get(phase, LINKED_IDLE)
+        if self.link_type == LINK_RECUPERATOR:
+            # It breathes opposite to this one, its intake passive (fan resting) with passive intake on.
+            phase = self.logic.phase if self.enabled else None
+            return {PHASE_EXHAUST: LINKED_INTAKE, PHASE_INTAKE: LINKED_EXHAUST}.get(phase, LINKED_IDLE)
         wanted = self.wanted_fans()
         if self.link_intake_switch and wanted.get(self.link_intake_switch):
             return LINKED_INTAKE
