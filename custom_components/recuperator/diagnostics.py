@@ -55,6 +55,12 @@ def _logic_state(logic) -> dict[str, Any]:
         "passive": logic.passive,
         "passive_flow": logic.passive_flow,
         "passive_flow_after_seconds": logic.passive_flow_after_seconds,
+        "resting": logic.resting,
+        "partner_intake_share": logic.partner_intake_share,
+        "last_intake_limited": logic.last_intake_limited,
+        "last_intake_drained": logic.last_intake_drained,
+        "last_intake_refilled": logic.last_intake_refilled,
+        "limit_measure_seconds": dict(logic._measure),
     }
 
 
@@ -81,6 +87,7 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry) -> dict
             "linked_state": controller.linked_state(),
             "sync_rule": controller.sync_rule if controller.link_entry_id else None,
             "synced": controller.synced() is not None,
+            "resting": controller.resting(),
             "wanted_fans": controller.wanted_fans(),
         },
         "probes_celsius": {"inside": inside, "outside": outside},

@@ -146,8 +146,14 @@ class BreathingLogic:
         # nothing about how much air came in.
         self.assisted: bool = False
         self.last_intake_refilled: bool = False  # the last intake was passive and unassisted
-        self.last_intake_limited: bool = False  # the last intake was cut short by the phase limit
+        self.last_intake_limited: bool = False  # the last intake was cut short by the phase limit or drying
         self.last_intake_drained: bool = False  # the last intake ended because the core ran out of heat
+        # What the phase limit and drying measure against, per phase (see _phase_limit).
+        self._measure: dict[str, float | None] = {PHASE_EXHAUST: None, PHASE_INTAKE: None}
+        self._after_limit = False  # the phase before the running one was cut short by a limit
+        # Resting in a synced pair: paused, both fans off, while the other unit
+        # finishes its phase (set by sync.step_pair, cleared when a phase begins).
+        self.resting = False
         self.passive_flow: bool | None = None  # inflow seen during the running/last passive intake
         self.passive_flow_after_seconds: float | None = None
         self._intake_inside_start: float | None = None
@@ -160,6 +166,9 @@ class BreathingLogic:
         # The optional room and outdoor sensors (set by the controller each tick).
         self.ambient: Ambient = Ambient()
         self.drying: Drying = DRYING_IDLE
+        # A synced recuperator's drying lean, which applies to this unit's intakes too
+        # while the two breathe as a pair (set by sync.step_pair; cleared when alone).
+        self.partner_intake_share: float | None = None
         # Heat recovery: the supply air (inside probe) averaged over each intake.
         self._efficiencies: deque[float] = deque(maxlen=EFFICIENCY_BREATHS)
         self._supply_sum = 0.0
@@ -265,6 +274,8 @@ class BreathingLogic:
         """Begin breathing: intake-only mode starts with intake, otherwise exhaust."""
         first = PHASE_INTAKE if mode == MODE_INTAKE_ONLY else PHASE_EXHAUST
         self.last_reason = REASON_STARTED
+        self._measure = {PHASE_EXHAUST: None, PHASE_INTAKE: None}
+        self._after_limit = False
         self._begin(first, now, mode, s, inside, outside)
 
     def stop(self) -> None:
@@ -274,11 +285,13 @@ class BreathingLogic:
         self.phase_started = None
         self.timed_reason = TIMED_NOT
         self.last_reason = REASON_STOPPED
+        self.resting = False
 
     def _begin(self, phase: str, now: float, mode: str, s: Settings, inside, outside) -> None:
         """Start an exhaust or intake phase and decide whether it is timed."""
         self.phase = phase
         self.next_phase = None
+        self.resting = False
         self.phase_started = now
         ref, far = self._ref_far(phase, inside, outside)
         if mode == MODE_TIMED:
@@ -327,6 +340,7 @@ class BreathingLogic:
         """Advance the cycle. Returns True if the phase changed."""
         if self.phase == PHASE_STOPPED:
             return False
+        self.partner_intake_share = None  # breathing alone: only its own drying counts
         chosen, mode = mode, self.effective_mode(mode)
         if self.phase == PHASE_INTAKE:
             self._sample_supply(now, inside)
@@ -406,6 +420,7 @@ class BreathingLogic:
         """Finish the current phase, remember what it achieved, and pause."""
         if self.phase in (PHASE_EXHAUST, PHASE_INTAKE) and self.phase_started is not None:
             duration = now - self.phase_started
+            self._update_measure(duration, reason)
             if self.phase == PHASE_EXHAUST:
                 self.last_exhaust_seconds = duration
                 if inside is not None:
@@ -432,6 +447,26 @@ class BreathingLogic:
         self.phase = PHASE_PAUSE
         self.next_phase = next_phase
         self.phase_started = now
+
+    def _update_measure(self, duration: float, reason: str) -> None:
+        """Remember what the next limited phase may measure against.
+
+        A phase that ran free (not cut short by a limit, and not straight after
+        one) sets the measure. Any other phase can only raise it: after a limited
+        intake the core has hardly moved, so the next exhaust ends early by its
+        own rules, and measuring the next intake against that shorter exhaust
+        would shrink the breaths one after another.
+        """
+        if self.phase == PHASE_INTAKE and self._refills():
+            self._after_limit = False
+            return  # a room refilling on its own says nothing about the air moved
+        limited = reason in (REASON_PHASE_LIMIT, REASON_DRYING)
+        known = self._measure.get(self.phase)
+        if (not limited and not self._after_limit) or known is None:
+            self._measure[self.phase] = duration
+        else:
+            self._measure[self.phase] = max(known, duration)
+        self._after_limit = limited
 
     def _recovered(self, ref: float, far: float) -> float:
         """How much of the gap the far probe has closed (0..1, can overshoot).
@@ -550,7 +585,7 @@ class BreathingLogic:
         return None
 
     def _limit_share(self, s: Settings, refill: bool) -> tuple[float | None, str | None]:
-        """(share of the other phase's last length in %, reason) for the running phase, if limited.
+        """(share of the other phase's length in %, reason) for the running phase, if limited.
 
         Limited intake, and drying, keep an intake shorter than the last exhaust
         (the smaller share wins); limited exhaust does the reverse. A passive
@@ -560,23 +595,30 @@ class BreathingLogic:
         Limited exhaust skips the exhaust after an intake that ran the core out of
         heat: that intake was short because the exhaust before it stored little
         heat, so cutting the next exhaust to it would store even less, and the
-        breaths would shrink one after another down to the minimum phase.
+        breaths would shrink one after another down to the minimum phase. For
+        the same reason it skips the exhaust after an intake that drying or the
+        phase limit cut short: a limit never measures against a limited phase.
+
+        In a synced pair, the other unit's drying lean counts as well.
         """
         shares: list[tuple[float, str]] = []
         if self.phase == PHASE_INTAKE and not refill:
             if s.phase_limit == LIMIT_INTAKE:
                 shares.append((s.phase_limit_percent, REASON_PHASE_LIMIT))
-            if self.drying.intake_share is not None:
-                shares.append((self.drying.intake_share, REASON_DRYING))
+            for share in (self.drying.intake_share, self.partner_intake_share):
+                if share is not None:
+                    shares.append((share, REASON_DRYING))
         elif self.phase == PHASE_EXHAUST and s.phase_limit == LIMIT_EXHAUST and self.phase_limit_status(s) == "active":
             shares.append((s.phase_limit_percent, REASON_PHASE_LIMIT))
         return min(shares) if shares else (None, None)
 
     def phase_limit_status(self, s: Settings) -> str:
-        """off, active, or paused: Limited exhaust waits out the exhaust after a drained or refilled intake."""
+        """off, active, or paused: Limited exhaust waits out the exhaust after a drained, refilled or limited intake."""
         if s.phase_limit == LIMIT_OFF:
             return "off"
-        if s.phase_limit == LIMIT_EXHAUST and (self.last_intake_drained or self.last_intake_refilled):
+        if s.phase_limit == LIMIT_EXHAUST and (
+            self.last_intake_drained or self.last_intake_refilled or self.last_intake_limited
+        ):
             return "paused"
         return "active"
 
@@ -588,7 +630,10 @@ class BreathingLogic:
         share, reason = self._limit_share(s, refill)
         if share is None:
             return None, None
-        other = self.last_exhaust_seconds if self.phase == PHASE_INTAKE else self.last_intake_seconds
+        other_phase = PHASE_EXHAUST if self.phase == PHASE_INTAKE else PHASE_INTAKE
+        other = self._measure.get(other_phase) or (
+            self.last_exhaust_seconds if self.phase == PHASE_INTAKE else self.last_intake_seconds
+        )
         if not other:
             return None, None  # nothing to compare with yet
         return max(other * share / 100, s.min_phase_seconds), reason

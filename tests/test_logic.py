@@ -296,6 +296,73 @@ def test_drying_shortens_intakes() -> None:
     assert logic.last_intake_limited
 
 
+def test_drying_and_limited_exhaust_do_not_shrink_the_breaths() -> None:
+    """Limited exhaust sits out the exhaust after a drying-shortened intake, so neither feeds the other."""
+    s = Settings.from_mapping(
+        {"drying": True, "timed_exhaust_seconds": 100, "timed_intake_seconds": 100, "drying_min_intake_share": 50,
+         "phase_limit": "limited_exhaust", "phase_limit_percent": 50, "min_phase_seconds": 5, "pause_seconds": 1}
+    )
+    logic = BreathingLogic()
+    logic.ambient = Ambient(room_humidity=70.0)
+    logic.update_drying(s)
+    logic.start(0, "timed", s, 20, 5)
+    exhausts, intakes = set(), set()
+    for t in range(1, 3000):
+        if logic.step(t, "timed", s, 20, 5) and logic.phase == PHASE_PAUSE and t > 400:
+            (exhausts if logic.next_phase == PHASE_INTAKE else intakes).add(
+                logic.last_exhaust_seconds if logic.next_phase == PHASE_INTAKE else logic.last_intake_seconds
+            )
+    assert exhausts == {100} and intakes == {50}
+    assert logic.phase_limit_status(s) in ("active", "paused")
+
+
+class Front:
+    """A cold front in the core, in seconds of intake: an exhaust blows out exactly what the intake before it drew in.
+
+    So after a short intake the next exhaust is just as short, which is what made
+    a limit measured against the last phase shrink the breaths one after another.
+    """
+
+    ROOM, OUTDOOR, DEPTH = 20.0, 5.0, 200
+
+    def __init__(self) -> None:
+        self.front = 100  # half the core is cold
+
+    def probes(self, _t, phase):
+        if phase == PHASE_EXHAUST:
+            self.front = max(self.front - 1, 0)
+            return self.ROOM, (self.OUTDOOR if self.front else self.ROOM)
+        if phase == PHASE_INTAKE:
+            self.front = min(self.front + 1, self.DEPTH)
+            return (self.OUTDOOR if self.front >= self.DEPTH else self.ROOM), self.OUTDOOR
+        return self.ROOM, self.OUTDOOR
+
+
+@pytest.mark.parametrize("lean", ["limited_intake", "drying"])
+def test_a_limit_never_measures_against_the_phase_it_shortened(lean: str) -> None:
+    """Up to 0.5.13 intakes went 50, 25, 13 ... down to Minimum phase: each exhaust only blew out
+    the short intake before it, and the next intake was half of that."""
+    s = Settings.from_mapping(
+        {"phase_limit": "limited_intake" if lean == "limited_intake" else "off", "phase_limit_percent": 50,
+         "drying": lean == "drying", "drying_min_intake_share": 50, "min_phase_seconds": 5,
+         "max_phase_seconds": 600, "similar_band": 0, "max_supply_drop": 20, "pause_seconds": 1}
+    )
+    logic, core = BreathingLogic(), Front()
+    logic.ambient = Ambient(room_humidity=70.0 if lean == "drying" else None)
+    logic.update_drying(s)
+    logic.start(0, "automatic", s, Front.ROOM, Front.OUTDOOR)
+    intakes, exhausts = [], []
+    for t in range(1, 4000):
+        if logic.step(t, "automatic", s, *core.probes(t, logic.phase)) and logic.phase == PHASE_PAUSE:
+            if logic.next_phase == PHASE_EXHAUST:
+                intakes.append(logic.last_intake_seconds)
+            else:
+                exhausts.append(logic.last_exhaust_seconds)
+    assert exhausts[0] == 100 and len(intakes) > 20
+    assert set(intakes) == {50}  # half the 100 s exhaust that ran free, every time
+    assert set(exhausts[1:]) == {50}
+
+
 def test_drying_can_run_exhaust_only_and_hand_back() -> None:
     s = Settings.from_mapping({"drying": True, "drying_exhaust_only": True, "timed_exhaust_seconds": 30})
     logic = BreathingLogic()

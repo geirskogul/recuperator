@@ -45,6 +45,8 @@ from .const import (
     CONF_ROOM_TEMPERATURE,
     CONF_SYNC_RULE,
     DEFAULTS,
+    DRYING_OUTDOOR_HUMID,
+    DRYING_ROOM_COLD,
     LINK_EXHAUST_FAN,
     LINK_INTAKE_FAN,
     LINK_NONE,
@@ -69,7 +71,7 @@ from .const import (
 )
 from .diagram import PALETTE, Palette, palette_to_text, parse_palette
 from .logic import INSIDE, OUTSIDE, BreathingLogic, Settings
-from .sync import Unit, step_pair
+from .sync import Unit, resting, step_pair
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -353,6 +355,8 @@ class RecuperatorController:
         if self.logic.drying != drying_before:
             _LOGGER.debug("%s: drying %s", self.entry.title, self.logic.drying.status)
             self._notify()
+            if (partner := self.synced()) is not None:
+                partner._notify()  # its intakes follow this unit's drying lean too
 
     async def _async_run(self, now: float) -> None:
         if not self.enabled:
@@ -537,7 +541,13 @@ class RecuperatorController:
             "linked_unit": self.link_type,
             "linked_phase": self.linked_state(),
             "synced": self.synced() is not None,
+            "resting": self.resting(),
         }
+
+    def resting(self) -> bool:
+        """Is this unit resting while the synced recuperator finishes its phase (see sync.py)?"""
+        partner = self.synced()
+        return partner is not None and resting(self.logic, partner.logic)
 
     def drying_attributes(self) -> dict:
         """Extra detail for the Drying sensor."""
@@ -546,9 +556,18 @@ class RecuperatorController:
         return {
             "intake_share": None if drying.intake_share is None else round(drying.intake_share),
             "exhaust_only": drying.exhaust_only,
+            "synced_intake_share": self._synced_intake_share(),
             "room_humidity": ambient.room_humidity,
             "outdoor_humidity": ambient.outdoor_humidity,
         }
+
+    def _synced_intake_share(self) -> int | None:
+        """The synced recuperator's drying lean (%), which this unit's intakes follow too."""
+        partner = self.synced()
+        if partner is None or self.logic.drying.status in (DRYING_ROOM_COLD, DRYING_OUTDOOR_HUMID):
+            return None  # its own drying stood down to protect the room
+        share = partner.logic.drying.intake_share
+        return None if share is None else round(share)
 
     def linked_state(self) -> str:
         """What the linked unit is doing: exhaust, intake, idle or not linked."""

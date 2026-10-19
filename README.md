@@ -43,7 +43,7 @@ During exhaust, the inside probe reads the room air going out, and the outside p
 
 - **Recovered.** The far end of the core has caught up by the **Recovery target** (80 % of the way, by default).
 - **Settled.** The far end has got at least halfway there and has stopped changing, so the core has done what it can.
-- **Supply colder than room.** For intakes only: the air coming into the room has dropped more than **Maximum supply drop** (3 °C) below the room temperature. This is the main protection against draughts.
+- **Supply colder than room.** For intakes only: the air coming into the room has dropped more than **Maximum supply drop** (3 °C) below the room temperature. This is the main protection against drafts.
 - **Maximum phase.** A plain time limit (2 minutes by default).
 
 No breath ever ends before **Minimum phase** (20 s), which protects the fans and relays. Then both fans rest for the **Pause**, and the other phase begins.
@@ -110,7 +110,7 @@ Everything lives on one device:
 - A live **Diagram** of the pipe (see below).
 - **Every setting** as a number, so you can put them on a dashboard. The less common ones start hidden.
 
-You can also change all the settings at once under **Configure**, **Settings**. They're grouped into sections there (Breathing rhythm, Draught protection, Cold weather, Drying and so on), each setting with a short explanation. Sections you rarely need start folded, and open by themselves when their feature is switched on. Changes take effect within a second, without restarting anything.
+You can also change all the settings at once under **Configure**, **Settings**. They're grouped into sections there (Breathing rhythm, Draft protection, Cold weather, Drying and so on), each setting with a short explanation. Sections you rarely need start folded, and open by themselves when their feature is switched on. Changes take effect within a second, without restarting anything.
 
 The device page can only list entities alphabetically. For a tidy, grouped view on a dashboard, paste this card and drop the rows you don't need:
 
@@ -133,7 +133,7 @@ entities:
   - number.basement_breather_minimum_phase
   - number.basement_breather_maximum_phase
   - type: section
-    label: Draught protection and cold
+    label: Draft protection and cold
   - number.basement_breather_maximum_supply_drop
   - number.basement_breather_cold_threshold
   - number.basement_breather_cold_intake_limit
@@ -190,11 +190,13 @@ Drying stands down, and the **Drying** sensor says why, when:
 - **The room is colder than *Drying room minimum*** (10 °C), so drying never chills the room in winter.
 - **The outdoor air holds as much water as the room's.** On a muggy summer day, ventilating would only bring more water in. This check needs the outdoor temperature and humidity. It compares the water vapour pressure rather than g/m³, because cold air is denser: near the break-even point, cold outdoor air can hold more grams per cubic metre and still dry a warm room once it has warmed up.
 
-The draught and frost protections still come first, and intakes a drying lean cuts short end with the reason *Drying*.
+The draft and frost protections still come first, and intakes a drying lean cuts short end with the reason *Drying*.
+
+**In a [synced pair](#synced-recuperator),** drying is decided for the pair. Either unit's lean applies to both units' intakes, so a second unit without a humidity sensor of its own dries along with the first. A unit whose intake the lean cuts short rests, with both fans off, while the other unit finishes its exhaust. So the basement blows out more than it takes in through the two cores, and the breaths keep their length. A unit whose own drying stands down because its room is too cold or the outdoor air too humid doesn't take the other unit's lean. The Drying sensor's `synced_intake_share` attribute shows the other unit's lean when it applies.
 
 ### Phase limit
 
-To keep one phase shorter than the other, set **Phase limit** to *Limited intake* or *Limited exhaust*. The limited phase then never runs longer than **Phase limit share** (90 %) of the other phase just before it. For example, *Limited intake* takes in a bit less air than you blow out. It works in Automatic and Timed mode, and a phase it cuts short ends with the reason *Phase limit*.
+To keep one phase shorter than the other, set **Phase limit** to *Limited intake* or *Limited exhaust*. The limited phase then never runs longer than **Phase limit share** (90 %) of the other phase. It measures against the last such phase that ran free: after a limited intake the core has hardly moved, so in *Automatic* the next exhaust ends early on its own, and measuring the next intake against that would shrink the breaths one after another. For example, *Limited intake* takes in a bit less air than you blow out. It works in Automatic and Timed mode, and a phase it cuts short ends with the reason *Phase limit*.
 
 A few things still come first:
 
@@ -202,6 +204,8 @@ A few things still come first:
 - **Frost protection.** In cold weather the exhaust keeps running at least as long as the intake, so *Limited exhaust* pauses until it warms up.
 - **Passive intakes** the room refills on its own are never limited. One that a linked unit pulls in is limited as usual (see [Passive intake](#passive-intake)).
 - **After an intake that ran out of heat,** Limited exhaust sits out one exhaust and lets it run by its own rules. That covers intakes ended by *Supply colder than room*, *Supply below floor* or *Cold limit*. Such an intake was short because the core had little heat to give. Cutting the next exhaust to match would store even less, and the breaths would shrink one after another down to *Minimum phase*. The Phase sensor's `phase_limit` attribute shows `paused` when this happens.
+- **After an intake that drying or the phase limit cut short,** Limited exhaust sits out one exhaust too, so drying and Limited exhaust can't feed each other.
+- **In a [synced pair](#synced-recuperator),** a phase the limit ends early never ends the other unit's phase. The limited unit rests, with both fans off, while the other unit finishes its phase by its own rules, and then the pair switches. The Phase sensor shows *Pause* and its `resting` attribute is true.
 
 ### Passive intake
 
@@ -221,7 +225,7 @@ A second unit can breathe in the opposite direction, so the house stays balanced
 
 #### Synced recuperator
 
-A second recuperator with its own probes can do better than follow. Add it as a Recuperator of its own, then on either one choose **Configure**, **Linked unit**, *Synced recuperator*, and pick the other. Both are linked to each other when you save. Each keeps its own probes, room and outdoor sensors, settings, diagram and Heat recovery, but the two always breathe opposite ways and switch together.
+A second recuperator with its own probes can do better than follow. Add it as a Recuperator of its own, then on either one choose **Configure**, **Linked unit**, *Synced recuperator*, and pick the other. Both are linked to each other when you save. Each keeps its own probes, room and outdoor sensors, settings, diagram and Heat recovery, but the two never breathe the same way at once, and they switch together.
 
 The **Sync rule** decides when they switch:
 
@@ -230,9 +234,13 @@ The **Sync rule** decides when they switch:
 | *Either is done* (default) | as soon as either unit's phase is done. A phase can end a little early for the other unit. |
 | *Both are done* | once both are done. The unit that finished first keeps its fan running until then, so air keeps moving both ways. |
 | *Average of both* | once the two units' progress towards their *Recovery target*, averaged, gets there. Both must be past *Minimum phase*. |
-| *This recuperator leads* / *The synced recuperator leads* | only by the lead unit's own rules. The other unit just measures. |
+| *This recuperator leads* / *The synced recuperator leads* | only by the lead unit's own rules. The other unit just measures, except that its own protections, phase limit and drying rest it, and while the lead rests, the other unit's own rules end the phase. |
 
-Whatever the rule, room protection (*Supply colder than room*, *Supply below floor*) and the *Cold limit* on either unit switch the pair at once. Except under a lead rule, so do *Maximum phase*, the phase limit and drying. A unit that switched because of the other one gives the reason *Synced recuperator switched*. Both pause together and start again together, once both pauses are over.
+Except under a lead rule, *Maximum phase* on either unit switches the pair at once. A unit that switched because of the other one gives the reason *Synced recuperator switched*. Both start again together, once both pauses are over.
+
+A phase that ends early never ends the other unit's phase, whatever ended it: room protection (*Supply colder than room*, *Supply below floor*), the *Cold limit*, the [phase limit](#phase-limit) or [drying](#drying). That unit rests, with both fans off, until the other unit has finished its phase by its own rules (whatever the sync rule, the other unit decides then). The Phase sensor shows *Pause*, and its `resting` attribute is true. Cutting the other unit short instead would make the breaths shrink one after another. A shorter exhaust stores less heat in the core, so that unit's next intake runs out of heat sooner and cuts the other unit's exhaust shorter still. A limit would likewise measure against the shorter phase. Drying is decided for the pair: either unit's lean applies to both.
+
+While one unit rests, the other still blows air in or out, so some air comes in or leaves through the resting unit's hose and other gaps. With long *Timed* breaths in cold weather the rests can be long. With 1600 s breaths and a 300 s *Cold intake limit*, for example, each unit takes air in for 300 s and then rests for 1300 s while the other finishes its exhaust.
 
 Changing only the sync rule applies at once; the rule is shown from each unit's side, so *This recuperator leads* on one is *The synced recuperator leads* on the other.
 
@@ -312,7 +320,7 @@ The replay has its own small **Replay** device, listed under *Connected devices*
 | If you see... | Try |
 | --- | --- |
 | Lots of rapid switching | A higher *Minimum phase* or *Recovery target* |
-| Cold draughts | A lower *Maximum supply drop*, e.g. 2 °C |
+| Cold drafts | A lower *Maximum supply drop*, e.g. 2 °C |
 | Intakes ending before fresh air arrives | A higher *Maximum supply drop*, and a *Minimum phase* at least as long as the air takes to arrive |
 | Every breath hitting *Maximum phase* | Normal with a big core. Lower the *Recovery target*, or treat *Maximum phase* as your rhythm |
 | *Frost risk*, or ice at the outdoor end | A higher *Cold exhaust extra* |
@@ -333,6 +341,12 @@ The replay has its own small **Replay** device, listed under *Connected devices*
 
 ## Recent changes
 
+- **0.5.14.** No more shrinking breaths from the phase limit, drying or the protections.
+  - **Synced pairs.** When the phase limit or drying ends one unit's phase early, that unit now rests with both fans off while the other finishes its phase, and then the pair switches. Before, it ended the other unit's phase too, and under the *Either*, *Both* and *Average* rules the breaths could shrink one after another down to *Minimum phase*. Under a lead rule, the follower's phase limit and drying now take effect (they used to be ignored), and while the lead rests, the follower's own rules end the phase.
+  - **Synced pairs, protections.** Room protection (*Supply colder than room*, *Supply below floor*) and the *Cold limit* now rest the unit they stop, in the same way, instead of switching the pair. Before, an intake that ran its core out of heat cut the other unit's exhaust short, which left that core less heat for its own next intake. In cold weather, or with a small *Maximum supply drop*, the breaths shrank one after another down to *Minimum phase*, even in *Timed* mode.
+  - **Drying is decided for the pair,** so a unit without a humidity sensor dries along with the other.
+  - **Automatic mode, single units too.** The phase limit and drying now measure against the last phase that ran free. Before, they measured against the phase just before, which in *Automatic* had itself ended early because the limited phase before it left the core almost untouched, so the breaths shrank down to *Minimum phase*. Limited exhaust also sits out the exhaust after an intake that drying cut short.
+  - See [Phase limit](#phase-limit) and [Synced recuperator](#synced-recuperator).
 - **0.5.13.** Passive intake with a linked unit: an intake that the linked unit's exhaust pulls in now counts as an ordinary intake with its fan off. Before, it could run up to *Passive intake maximum* while this unit's exhausts stopped at *Maximum phase*, so one phase was always short. A sensorless recuperator's intake fan now rests too, so the two take turns exhausting. See [Passive intake](#passive-intake).
 - **0.5.12.** The replay card loads reliably in the Companion app. It now adds itself to your dashboards' resources, which dashboards fetch from Home Assistant every time they open. Before, it came with the page, which the app can keep an old copy of. That showed *Custom element doesn't exist*, often only on the phone.
 - **0.5.11.** While a fan runs, white streaks of air flow through the pipe in the [diagram](#the-diagram) and in [replays](#replays), slowly during a passive intake. **Diagram airflow** turns them off.
