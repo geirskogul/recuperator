@@ -176,11 +176,16 @@ async def async_create_replay(
     minutes = (end - start).total_seconds() / 60
     count = frames_wanted or min(MAX_FRAMES, max(60, int(minutes)))
 
-    # The units to draw: this one, and its synced recuperator under it if wanted.
+    # The units to draw: this one, and its synced recuperators under it if wanted
+    # (those beside it first, then the other side).
     units = [(entry.entry_id, controller.inside_sensor, controller.outside_sensor)]
-    partner = hass.config_entries.async_get_entry(controller.link_entry_id) if controller.link_entry_id else None
-    if partner is not None and controller.option(CONF_REPLAY_LINKED):
-        units.append((partner.entry_id, partner.data[CONF_INSIDE_SENSOR], partner.data[CONF_OUTSIDE_SENSOR]))
+    synced = []
+    if controller.option(CONF_REPLAY_LINKED) and (sides := controller.sides()) is not None:
+        for entry_id in (*sides[0], *sides[1]):
+            other = hass.config_entries.async_get_entry(entry_id)
+            if other is not None and entry_id != entry.entry_id:
+                synced.append(other)
+                units.append((entry_id, other.data[CONF_INSIDE_SENSOR], other.data[CONF_OUTSIDE_SENSOR]))
     registry = er.async_get(hass)
     phase_ids = [registry.async_get_entity_id("sensor", DOMAIN, f"{entry_id}_phase") for entry_id, _i, _o in units]
     ids = [e for (_id, inside, outside), phase in zip(units, phase_ids) for e in (inside, outside, phase) if e]
@@ -194,8 +199,7 @@ async def async_create_replay(
         "title": entry.title,
         "palette": controller.palette,
         "unit": controller.display_unit,
-        "linked": linked[0] if linked else None,
-        "linked_title": partner.title if linked else "",
+        "others": [(unit_frames, other.title) for unit_frames, other in zip(linked, synced)],
     }
     svg = render_replay_svg(frames, airflow=controller.option(CONF_DIAGRAM_AIRFLOW), **drawing)
     gif = None
@@ -224,7 +228,7 @@ async def async_create_replay(
         "end": dt_util.as_local(end).isoformat(),
         "frames": len(frames),
         "playback_seconds": playback,
-        "linked": partner.title if linked else None,
+        "linked": ", ".join(other.title for other in synced) or None,
     }
     if gif is not None:
         response.update(gif_url=f"/local/recuperator/{gif_name}", gif_file=os.path.join(folder, gif_name))

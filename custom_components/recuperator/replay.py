@@ -4,9 +4,9 @@ Builds a self-animating SVG (SMIL and CSS animation, no scripts), so it plays in
 any browser and in a Picture Entity card: the pipe's gradient and the readings in
 its ends change frame by frame, the phase label, airflow arrow and the streaks of
 air in the pipe switch with each phase, and under the pipe a history graph of the
-two probes has a cursor sweeping across it in step. A synced recuperator can be
-drawn as a second panel under the first, on the same temperature scale and in
-step with it.
+two probes has a cursor sweeping across it in step. Synced recuperators can be
+drawn as panels under the first, on the same temperature scale and in step
+with it.
 
 Pure Python (no Home Assistant), so it can be tested directly.
 """
@@ -379,6 +379,25 @@ def header_texts(frames: list[Frame], playback_seconds: float) -> tuple[str, str
     return period, f"{len(frames)} frames, {playback_seconds:g} s loop"
 
 
+def replay_panels(
+    frames: list[Frame],
+    title: str,
+    others: list[tuple[list[Frame], str]] | None,
+    linked: list[Frame] | None = None,
+    linked_title: str = "",
+) -> list[tuple[list[Frame], str]]:
+    """(frames, name) for each unit drawn: this one first, then the synced recuperators."""
+    if len(frames) < 2:
+        raise ValueError("at least two frames are needed")
+    others = list(others or [])
+    if linked:
+        others.append((linked, linked_title))
+    for unit_frames, _name in others:
+        if len(unit_frames) != len(frames):
+            raise ValueError("each synced recuperator needs one frame per frame")
+    return [(frames, title or "Replay")] + [(f, name or "Synced recuperator") for f, name in others]
+
+
 def render_replay_svg(
     frames: list[Frame],
     playback_seconds: float = 60,
@@ -388,20 +407,18 @@ def render_replay_svg(
     linked: list[Frame] | None = None,
     linked_title: str = "",
     airflow: bool = True,
+    others: list[tuple[list[Frame], str]] | None = None,
 ) -> str:
     """An animated SVG of the frames, looping every playback_seconds.
 
     The pipe on top, and under it a history graph of the two probes with a
     cursor sweeping across in step with the pipe. Frame temperatures are in °C;
-    they are shown in `unit` (°C or °F). With `linked` (a synced recuperator's
-    frames, at the same times) its own pipe and graph follow as a second panel.
+    they are shown in `unit` (°C or °F). With `others` (synced recuperators'
+    frames, at the same times, and their names; `linked` and `linked_title`
+    give just one) each one's pipe and graph follow as a panel of its own.
     With `airflow`, streaks of air flow through each pipe while a fan runs.
     """
-    if len(frames) < 2:
-        raise ValueError("at least two frames are needed")
-    if linked is not None and len(linked) != len(frames):
-        raise ValueError("the linked unit needs one frame per frame")
-    panels = [(frames, title or "Replay")] + ([(linked, linked_title or "Synced recuperator")] if linked else [])
+    panels = replay_panels(frames, title, others, linked, linked_title)
     n = len(frames)
     kt = _key_times(n)
     dur = float(playback_seconds)

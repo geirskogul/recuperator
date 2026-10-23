@@ -138,7 +138,7 @@
               "phase_limit_percent": "Phase limit share"
             },
             "data_description": {
-              "phase_limit": "Keep one phase shorter than the other. Limited intake: an intake never lasts longer than Phase limit share of the exhaust before it. Limited exhaust: the other way round. Minimum phase still applies, room protection can still end an intake sooner, and in cold weather the cold exhaust rule wins over a limited exhaust. Passive intakes are not limited, and Limited exhaust sits out the exhaust after an intake that ran the core out of heat, or that drying or the phase limit cut short. A limit measures against the last phase that ran free, so the breaths cannot shrink one after another. In a synced pair, a unit the limit stops early rests, with its fans off, until the other unit is done.",
+              "phase_limit": "Keep one phase shorter than the other. Limited intake: an intake never lasts longer than Phase limit share of the exhaust before it. Limited exhaust: the other way round. Minimum phase still applies, room protection can still end an intake sooner, and in cold weather the cold exhaust rule wins over a limited exhaust. Passive intakes are not limited, and Limited exhaust sits out the exhaust after an intake that ran the core out of heat, or that drying or the phase limit cut short. A limit measures against the last phase that ran free, so the breaths cannot shrink one after another. In a synced group, a unit the limit stops early rests, with its fans off, until the other units are done.",
               "phase_limit_percent": "With a phase limit on: how long the limited phase may run, as a share of the other phase's length (100% = no longer than it)."
             }
           },
@@ -155,7 +155,7 @@
               "drying_min_room_temperature": "Drying room minimum"
             },
             "data_description": {
-              "drying": "Lean towards exhaust while the room is more humid than the target humidity. Needs a room humidity sensor (Configure, Room and outdoor sensors). In a synced pair, either unit's lean applies to both, unless a unit's own drying stood down to protect its room.",
+              "drying": "Lean towards exhaust while the room is more humid than the target humidity. Needs a room humidity sensor (Configure, Room and outdoor sensors). In a synced group, the strongest lean of any unit applies to all of them, unless a unit's own drying stood down to protect its room.",
               "drying_exhaust_only": "Let drying switch to Exhaust only when the room is very humid (Exhaust-only humidity).",
               "target_humidity": "With Drying on: above this room humidity, breathing leans towards exhaust.",
               "drying_band": "How far above the target humidity drying reaches its strongest lean (the drying intake share).",
@@ -234,20 +234,20 @@
       },
       "link": {
         "title": "Linked unit",
-        "description": "A second unit that breathes together with this one, moving air the opposite way so the house stays balanced: while this recuperator exhausts, the linked unit takes air in, and while this one takes air in, the linked unit exhausts.\n\nA sensorless recuperator or a single fan has no probes, so it simply follows this recuperator's phases, pauses and mode. A synced recuperator is another Recuperator you have added, with its own probes, sensors and settings: the two switch together, as the sync rule says. Breathing and Mode stay separate on each, so they only keep in step while both are breathing in Automatic or Timed. Saving restarts the recuperator (and the synced one), unless only the sync rule changed.",
+        "description": "A second unit that breathes together with this one, moving air the opposite way so the house stays balanced: while this recuperator exhausts, the linked unit takes air in, and while this one takes air in, the linked unit exhausts.\n\nA sensorless recuperator or a single fan has no probes, so it simply follows this recuperator's phases, pauses and mode. Synced recuperators are other Recuperators you have added, each with its own probes, sensors and settings: they switch together, as the sync rule says. Pick one for a pair, or several to breathe against this one together, such as two small units against one big one. Picking a unit that is already synced puts this one beside the units on its other side. A group holds up to four, and the two sides should move about the same amount of air. Breathing and Mode stay separate on each, so a unit only keeps in step while it is breathing in Automatic or Timed; if a whole side is off, the rest pair up among themselves. Saving restarts the recuperators whose links changed, unless only the sync rule changed.",
         "data": {
           "link_type": "Linked unit",
           "link_exhaust_switch": "Linked exhaust fan (inside to outside)",
           "link_intake_switch": "Linked intake fan (outside to inside)",
-          "link_entry": "Synced recuperator",
+          "link_entry": "Synced recuperators",
           "sync_rule": "Sync rule"
         },
         "data_description": {
-          "link_type": "Sensorless recuperator: a second unit with exhaust and intake fans but no probes of its own; this recuperator decides when it switches. Intake fan only: runs while this recuperator exhausts. Exhaust fan only: runs while this recuperator takes air in. Synced recuperator: another Recuperator you have added, with its own probes; each judges its own phases, and the sync rule decides when the pair switches.",
+          "link_type": "Sensorless recuperator: a second unit with exhaust and intake fans but no probes of its own; this recuperator decides when it switches. Intake fan only: runs while this recuperator exhausts. Exhaust fan only: runs while this recuperator takes air in. Synced recuperators: other Recuperators you have added, with their own probes; each judges its own phases, and the sync rule decides when the group switches.",
           "link_exhaust_switch": "Needed for a sensorless recuperator or an exhaust fan. Ignored for an intake fan only.",
           "link_intake_switch": "Needed for a sensorless recuperator or an intake fan. Ignored for an exhaust fan only.",
-          "link_entry": "Needed for a synced recuperator: the other Recuperator. It is linked back to this one when you save. Ignored for the other kinds.",
-          "sync_rule": "For a synced recuperator: when the pair switches. Either is done: as soon as one unit's phase is done, so phases can end a little early. Both are done: once both are; the first keeps its fan running until then. Average: once the two units' progress towards their recovery targets, averaged, gets there. A lead rule: only the lead unit's probes decide. A unit that room protection, a cold limit, the phase limit or drying stops early rests, with its fans off, until the other unit is done."
+          "link_entry": "Needed for synced recuperators: the Recuperators that breathe opposite to this one. They are linked back to this one when you save. Ignored for the other kinds.",
+          "sync_rule": "For synced recuperators: when the group switches. Either is done: as soon as one unit's phase is done, so phases can end a little early. Both are done: once all are; those done first keep their fans running until then. Recommended for three or more, so one small unit never cuts its neighbour short. Average: once the units' progress towards their recovery targets, averaged, gets there. A lead rule (pairs only): only the lead unit's probes decide. A unit that draft protection, a cold limit, the phase limit or drying stops early rests, with its fans off, until the other units are done. Maximum phase switches everyone."
         }
       },
       "replay": {
@@ -257,14 +257,14 @@
           "replay_hours": "Replay hours",
           "replay_playback_seconds": "Replay playback length",
           "replay_frames": "Replay frames",
-          "replay_linked": "Include the synced recuperator",
+          "replay_linked": "Include the synced recuperators",
           "replay_gif": "Also save a GIF"
         },
         "data_description": {
           "replay_hours": "How much history the Create replay button replays. Also saved from the last Create replay action.",
           "replay_playback_seconds": "How long one loop of the replay lasts.",
           "replay_frames": "Number of frames (0 = one per minute of history, 60 to 1440).",
-          "replay_linked": "Draw the synced recuperator too, under this one, in the same replay.",
+          "replay_linked": "Draw the synced recuperators too, under this one, in the same replay.",
           "replay_gif": "Also save each replay as an animated GIF next to the SVG, for sharing. A GIF has at most 200 frames; fewer Replay frames make a smaller file."
         }
       },
@@ -294,7 +294,11 @@
       "fan_in_use": "This fan is already driven by another recuperator.",
       "same_switch": "The linked exhaust and intake fans must be different switches.",
       "link_entry_missing": "Pick the other Recuperator to sync with.",
-      "link_entry_taken": "That recuperator is already linked to something else. Set its Linked unit to None first."
+      "link_entry_taken": "That recuperator is already linked to something else, or synced in another group. Set its Linked unit to None first.",
+      "link_entry_same_side": "That recuperator already breathes on this one's side of the group. Pick units from the other side.",
+      "link_entry_both_sides": "These recuperators breathe on opposite sides of one group. Pick units from one side only.",
+      "group_too_big": "A synced group holds at most four recuperators.",
+      "sync_rule_pair_only": "A lead rule only works for a pair. Pick Either, Both or Average for three or more."
     }
   },
   "entity": {
@@ -460,7 +464,7 @@
           "supply_drop": "Supply colder than room",
           "phase_limit": "Phase limit",
           "drying": "Drying",
-          "synced": "Synced recuperator switched"
+          "synced": "Synced group switched"
         }
       },
       "last_exhaust": {
@@ -556,8 +560,8 @@
           "description": "Number of frames (0 = one per minute of history, 60 to 1440). Left out: the saved value."
         },
         "include_linked": {
-          "name": "Include the synced recuperator",
-          "description": "With a synced recuperator: draw it too, under this one, on the same temperature scale. Left out: the saved value (default on)."
+          "name": "Include the synced recuperators",
+          "description": "With synced recuperators: draw them too, under this one, on the same temperature scale. Left out: the saved value (default on)."
         },
         "gif": {
           "name": "Also save a GIF",
@@ -573,7 +577,7 @@
         "recuperator": "Sensorless recuperator (two fans, no probes: follows this one)",
         "intake_fan": "Intake fan only",
         "exhaust_fan": "Exhaust fan only",
-        "synced": "Synced recuperator (has its own probes: the two decide together)"
+        "synced": "Synced recuperators (each has its own probes: they decide together)"
       }
     },
     "phase_limit": {

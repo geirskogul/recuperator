@@ -412,7 +412,7 @@ async def test_link_page_links_both_and_mirrors_the_rule(hass: HomeAssistant, fa
     flow = await hass.config_entries.options.async_init(alpha.entry_id)
     flow = await hass.config_entries.options.async_configure(flow["flow_id"], {"next_step_id": "link"})
     result = await hass.config_entries.options.async_configure(
-        flow["flow_id"], {"link_type": "synced", "link_entry": "beta", "sync_rule": SYNC_LEAD_THIS}
+        flow["flow_id"], {"link_type": "synced", "link_entry": ["beta"], "sync_rule": SYNC_LEAD_THIS}
     )
     await hass.async_block_till_done()
     assert result["type"] == "create_entry"
@@ -425,7 +425,7 @@ async def test_link_page_links_both_and_mirrors_the_rule(hass: HomeAssistant, fa
     flow = await hass.config_entries.options.async_init(alpha.entry_id)
     flow = await hass.config_entries.options.async_configure(flow["flow_id"], {"next_step_id": "link"})
     await hass.config_entries.options.async_configure(
-        flow["flow_id"], {"link_type": "synced", "link_entry": "beta", "sync_rule": SYNC_BOTH}
+        flow["flow_id"], {"link_type": "synced", "link_entry": ["beta"], "sync_rule": SYNC_BOTH}
     )
     await hass.async_block_till_done()
     assert alpha.runtime_data is controller
@@ -444,7 +444,7 @@ async def test_link_page_refuses_a_recuperator_linked_elsewhere(hass: HomeAssist
     await setup_entry(hass, _entry("beta", "Beta", {**DATA_B, "link_type": "intake_fan", "link_intake_switch": "input_boolean.x"}, B))
     flow = await hass.config_entries.options.async_init(alpha.entry_id)
     flow = await hass.config_entries.options.async_configure(flow["flow_id"], {"next_step_id": "link"})
-    result = await hass.config_entries.options.async_configure(flow["flow_id"], {"link_type": "synced", "link_entry": "beta"})
+    result = await hass.config_entries.options.async_configure(flow["flow_id"], {"link_type": "synced", "link_entry": ["beta"]})
     assert result["errors"] == {"link_entry": "link_entry_taken"}
     result = await hass.config_entries.options.async_configure(flow["flow_id"], {"link_type": "synced"})
     assert result["errors"] == {"link_entry": "link_entry_missing"}

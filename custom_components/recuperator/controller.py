@@ -31,7 +31,6 @@ from .const import (
     CONF_EXHAUST_SWITCH,
     CONF_INSIDE_SENSOR,
     CONF_INTAKE_SWITCH,
-    CONF_LINK_ENTRY,
     CONF_LINK_EXHAUST_SWITCH,
     CONF_LINK_INTAKE_SWITCH,
     CONF_LINK_TYPE,
@@ -45,8 +44,7 @@ from .const import (
     CONF_ROOM_TEMPERATURE,
     CONF_SYNC_RULE,
     DEFAULTS,
-    DRYING_OUTDOOR_HUMID,
-    DRYING_ROOM_COLD,
+    DOMAIN,
     LINK_EXHAUST_FAN,
     LINK_INTAKE_FAN,
     LINK_NONE,
@@ -67,11 +65,12 @@ from .const import (
     SETTINGS_BY_KEY,
     STARTUP_WAIT_SECONDS,
     SYNC_EITHER,
+    SYNC_LEAD_THIS,
     SYNC_RULES,
 )
 from .diagram import PALETTE, Palette, palette_to_text, parse_palette
 from .logic import INSIDE, OUTSIDE, BreathingLogic, Settings
-from .sync import Unit, resting, step_pair
+from .sync import LEAD_RULES, Unit, group_lean, link_entries_of, resting, sides_of, step_sides
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -94,9 +93,11 @@ class RecuperatorController:
         # one exhausts, its exhaust while this one takes air in.
         self.link_type: str = entry.data.get(CONF_LINK_TYPE, LINK_NONE)
         self.link_exhaust_switch, self.link_intake_switch = linked_fans(entry.data)
-        # A synced recuperator is another entry with its own fans, probes and
-        # settings; the two step as a pair while both breathe (see sync.py).
-        self.link_entry_id: str | None = entry.data.get(CONF_LINK_ENTRY) if self.link_type == LINK_SYNCED else None
+        # Synced recuperators are other entries with their own fans, probes and
+        # settings: the units on the other side of this one's group. The group
+        # steps together while its members breathe (see sync.py).
+        self.link_entries: list[str] = link_entries_of(entry.data)
+        self.link_entry_id: str | None = self.link_entries[0] if self.link_entries else None
         # Optional room and outdoor sensors (the outdoor ones may be weather entities).
         self.room_temperature_sensor: str | None = entry.data.get(CONF_ROOM_TEMPERATURE) or None
         self.outdoor_temperature_sensor: str | None = entry.data.get(CONF_OUTDOOR_TEMPERATURE) or None
@@ -184,7 +185,7 @@ class RecuperatorController:
 
     @property
     def sync_rule(self) -> str:
-        """When a synced pair switches phases, from this unit's point of view (see sync.py)."""
+        """When a synced group switches phases, from this unit's point of view (see sync.py)."""
         value = self.entry.data.get(CONF_SYNC_RULE, SYNC_EITHER)
         return value if value in SYNC_RULES else SYNC_EITHER
 
@@ -355,29 +356,53 @@ class RecuperatorController:
         if self.logic.drying != drying_before:
             _LOGGER.debug("%s: drying %s", self.entry.title, self.logic.drying.status)
             self._notify()
-            if (partner := self.synced()) is not None:
-                partner._notify()  # its intakes follow this unit's drying lean too
+            for member in self.members():
+                if member is not self:
+                    member._notify()  # their intakes follow this unit's drying lean too
 
     async def _async_run(self, now: float) -> None:
         if not self.enabled:
             return
         self._maybe_start(now)
-        partner = self.synced()
-        self.logic.assisted = self.intake_assisted(partner)
-        if partner is None:
+        group = self.group()
+        self.logic.assisted = self.intake_assisted(group is not None)
+        if group is None:
             changed = self.logic.step(now, self.mode, self.settings, *self.probes())
-        elif self.entry.entry_id < partner.entry.entry_id:
-            # One of the two (always the same one) steps the pair on its tick.
-            partner.logic.assisted = partner.intake_assisted(self)
-            changed = step_pair(now, self.unit(), partner.unit(), self.sync_rule)
-            if changed:
-                await partner._async_apply()
-                partner._phase_changed()
+        elif self is group[0][0]:
+            # One member (the first by entry ID, the same on every tick) steps the group on its tick.
+            changed = await self._async_step_group(now, *group)
         else:
-            changed = False  # the synced recuperator steps the pair
+            changed = False  # another member steps the group
         await self._async_apply()
         if changed:
             self._phase_changed()
+
+    async def _async_step_group(
+        self, now: float, mine: list[RecuperatorController], theirs: list[RecuperatorController]
+    ) -> bool:
+        """Step the whole group (this unit leads it), then switch the other members' fans."""
+        for member in (*mine, *theirs):
+            member.logic.assisted = member.intake_assisted(True)
+        rule, lead = self.sync_rule, None
+        if rule in LEAD_RULES:
+            if len(mine) == len(theirs) == 1:
+                lead = mine[0] if rule == SYNC_LEAD_THIS else theirs[0]
+            else:
+                rule = SYNC_EITHER  # lead rules are for pairs only
+        units = {id(member): member.unit() for member in (*mine, *theirs)}
+        changed = step_sides(
+            now,
+            [units[id(m)] for m in mine],
+            [units[id(m)] for m in theirs],
+            rule,
+            None if lead is None else units[id(lead)],
+        )
+        if changed:
+            for member in (*mine, *theirs):
+                if member is not self:
+                    await member._async_apply()
+                    member._phase_changed()
+        return changed
 
     @callback
     def _phase_changed(self) -> None:
@@ -388,49 +413,94 @@ class RecuperatorController:
             self.logic.last_reason,
         )
         self._notify()
-        if (partner := self.partner()) is not None:
-            partner._notify()  # its Linked unit sensor shows this unit's phase
+        for member in self.members():
+            if member is not self:
+                member._notify()  # its Linked unit sensor shows this unit's phase
 
-    # -- a synced recuperator -----------------------------------------------------------
+    # -- synced recuperators ------------------------------------------------------------
+
+    def sides(self) -> tuple[list[str], list[str]] | None:
+        """(this unit's side, the other side) of its synced group, as entry IDs; None if it has none.
+
+        Every member stores the other side; when the stored links disagree,
+        this unit breathes on its own (see sync.sides_of).
+        """
+        if not self.link_entries:
+            return None
+        links = {
+            e.entry_id: link_entries_of(e.data) for e in self.hass.config_entries.async_entries(DOMAIN)
+        }
+        return sides_of(self.entry.entry_id, links)
+
+    def _loaded(self, entry_ids: list[str]) -> list[RecuperatorController]:
+        found = []
+        for entry_id in entry_ids:
+            other = self.hass.config_entries.async_get_entry(entry_id)
+            if other is not None and other.state is ConfigEntryState.LOADED:
+                found.append(other.runtime_data)
+        return found
+
+    def members(self) -> list[RecuperatorController]:
+        """Every loaded member of this unit's synced group, this one included (empty without a group)."""
+        sides = self.sides()
+        return self._loaded([*sides[0], *sides[1]]) if sides else []
 
     def partner(self) -> RecuperatorController | None:
-        """The synced recuperator, if it is loaded and synced back to this one."""
-        if not self.link_entry_id:
-            return None
-        other = self.hass.config_entries.async_get_entry(self.link_entry_id)
-        if other is None or other.state is not ConfigEntryState.LOADED:
-            return None
-        partner: RecuperatorController = other.runtime_data
-        return partner if partner.link_entry_id == self.entry.entry_id else None
+        """The first loaded synced recuperator on the other side of the group."""
+        sides = self.sides()
+        others = self._loaded(sides[1]) if sides else []
+        return others[0] if others else None
 
-    def synced(self) -> RecuperatorController | None:
-        """The synced recuperator while the two breathe as a pair: both on, both in Automatic or Timed.
+    def other_side(self) -> list[RecuperatorController]:
+        """The loaded synced recuperators on the other side of the group."""
+        sides = self.sides()
+        return self._loaded(sides[1]) if sides else []
 
-        Breathing and Mode stay separate per unit. While either is off, or runs
-        Exhaust only or Intake only (drying's included), each breathes on its own.
+    def _in_step(self) -> bool:
+        """Can this unit breathe with its group now: on, and in Automatic or Timed?"""
+        return (
+            self.enabled
+            and self.logic.phase != PHASE_STOPPED
+            and self.logic.effective_mode(self.mode) in (MODE_AUTOMATIC, MODE_TIMED)
+        )
+
+    def group(self) -> tuple[list[RecuperatorController], list[RecuperatorController]] | None:
+        """(the side leading the group, the other side) while this unit breathes as part of its group.
+
+        Only members that are on and in Automatic or Timed take part; Breathing
+        and Mode stay separate per unit. While a whole side is out, the members
+        left pair up among themselves, alternating by entry ID. With fewer than
+        two taking part, each breathes on its own (None). Each side is sorted by
+        entry ID, and the leading side holds the first member, which steps the
+        group; every member works out the same answer.
         """
-        partner = self.partner()
-        if partner is None:
+        sides = self.sides()
+        if sides is None or not self._in_step():
             return None
-        for c in (self, partner):
-            if (
-                not c.enabled
-                or c.logic.phase == PHASE_STOPPED
-                or c.logic.effective_mode(c.mode) not in (MODE_AUTOMATIC, MODE_TIMED)
-            ):
+        a, b = ([c for c in self._loaded(side) if c._in_step()] for side in sides)
+        if not a or not b:
+            alone = sorted(a or b, key=lambda c: c.entry.entry_id)
+            if len(alone) < 2:
                 return None
-        return partner
+            a, b = alone[0::2], alone[1::2]
+        if min(b, key=lambda c: c.entry.entry_id).entry.entry_id < a[0].entry.entry_id:
+            a, b = b, a
+        return a, b
 
-    def intake_assisted(self, partner: RecuperatorController | None) -> bool:
-        """Does something exhaust while this unit takes air in (a linked unit, or the synced recuperator)?
+    def synced(self) -> bool:
+        """Is this unit breathing as part of its synced group now?"""
+        return self.group() is not None
+
+    def intake_assisted(self, grouped: bool) -> bool:
+        """Does something exhaust while this unit takes air in (a linked unit, or its synced group)?
 
         A passive intake is then pulled in through this core, and the logic
         treats it as an ordinary intake whose fan stays off.
         """
-        return bool(self.link_exhaust_switch) or partner is not None
+        return bool(self.link_exhaust_switch) or grouped
 
     def unit(self) -> Unit:
-        """This recuperator as one unit of a synced pair, as it stands now."""
+        """This recuperator as one unit of a synced group, as it stands now."""
         return Unit(self.logic, self.mode, self.settings, *self.probes())
 
     # -- driving the fans -------------------------------------------------------------
@@ -540,14 +610,17 @@ class RecuperatorController:
             "passive": self.logic.phase == PHASE_INTAKE and self.logic.passive,
             "linked_unit": self.link_type,
             "linked_phase": self.linked_state(),
-            "synced": self.synced() is not None,
+            "synced": self.synced(),
             "resting": self.resting(),
         }
 
     def resting(self) -> bool:
-        """Is this unit resting while the synced recuperator finishes its phase (see sync.py)?"""
-        partner = self.synced()
-        return partner is not None and resting(self.logic, partner.logic)
+        """Is this unit resting while the other side of its synced group finishes its phase (see sync.py)?"""
+        group = self.group()
+        if group is None:
+            return False
+        others = group[1] if self in group[0] else group[0]
+        return resting(self.logic, *(c.logic for c in others))
 
     def drying_attributes(self) -> dict:
         """Extra detail for the Drying sensor."""
@@ -562,11 +635,14 @@ class RecuperatorController:
         }
 
     def _synced_intake_share(self) -> int | None:
-        """The synced recuperator's drying lean (%), which this unit's intakes follow too."""
-        partner = self.synced()
-        if partner is None or self.logic.drying.status in (DRYING_ROOM_COLD, DRYING_OUTDOOR_HUMID):
-            return None  # its own drying stood down to protect the room
-        share = partner.logic.drying.intake_share
+        """The strongest drying lean (%) among the rest of its synced group, which this unit's intakes follow too.
+
+        None when breathing alone, or when its own drying stood down to protect the room.
+        """
+        group = self.group()
+        if group is None:
+            return None
+        share = group_lean(self.logic, [c.logic for c in (*group[0], *group[1]) if c is not self])
         return None if share is None else round(share)
 
     def linked_state(self) -> str:
@@ -574,9 +650,11 @@ class RecuperatorController:
         if self.link_type == LINK_NONE:
             return LINKED_NOT_LINKED
         if self.link_type == LINK_SYNCED:
-            partner = self.partner()
-            phase = partner.logic.phase if partner is not None and partner.enabled else None
-            return {PHASE_EXHAUST: LINKED_EXHAUST, PHASE_INTAKE: LINKED_INTAKE}.get(phase, LINKED_IDLE)
+            # The other side: exhausting if any of it is, else taking air in if any of it is.
+            phases = {c.logic.phase for c in self.other_side() if c.enabled}
+            if PHASE_EXHAUST in phases:
+                return LINKED_EXHAUST
+            return LINKED_INTAKE if PHASE_INTAKE in phases else LINKED_IDLE
         if self.link_type == LINK_RECUPERATOR:
             # It breathes opposite to this one, its intake passive (fan resting) with passive intake on.
             phase = self.logic.phase if self.enabled else None

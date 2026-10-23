@@ -17,13 +17,17 @@ from homeassistant.helpers.event import async_track_entity_registry_updated_even
 from homeassistant.helpers.typing import ConfigType
 
 from .card import async_register_card, async_remove_card_resource
+from .config_flow import plan_link
 from .const import (
+    CONF_LINK_ENTRIES,
     CONF_LINK_ENTRY,
     CONF_LINK_TYPE,
     CONF_SYNC_RULE,
     DOMAIN,
     LEGACY_TIMED_PHASE,
     LINK_NONE,
+    LINK_SYNCED,
+    SYNC_EITHER,
     PLATFORMS,
     WIRING_KEYS,
     unique_id_for,
@@ -31,6 +35,7 @@ from .const import (
 from .controller import RecuperatorController
 from .entity import main_device_info, replay_device_info, replay_parent
 from .services import async_load_saved_replay, async_setup_services
+from .sync import link_entries_of
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -134,14 +139,30 @@ async def _async_options_updated(hass: HomeAssistant, entry: RecuperatorConfigEn
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: RecuperatorConfigEntry) -> None:
-    """A removed recuperator leaves its synced recuperator unlinked, breathing on its own.
+    """A removed recuperator leaves its synced group; a recuperator left without a group breathes on its own.
 
     With the last one gone, the Replay card leaves the dashboards' resources too.
     """
     if not [e for e in hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id]:
         await async_remove_card_resource(hass)
-    for other in hass.config_entries.async_entries(DOMAIN):
-        if other.data.get(CONF_LINK_ENTRY) == entry.entry_id:
-            data = {k: v for k, v in other.data.items() if k not in (CONF_LINK_ENTRY, CONF_SYNC_RULE)}
-            hass.config_entries.async_update_entry(other, data={**data, CONF_LINK_TYPE: LINK_NONE})
-            hass.config_entries.async_schedule_reload(other.entry_id)
+    others = [e for e in hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id]
+    links = {e.entry_id: link_entries_of(e.data) for e in (*others, entry)}
+    kinds = {e.entry_id: e.data.get(CONF_LINK_TYPE, LINK_NONE) for e in (*others, entry)}
+    changes, _error = plan_link(links, kinds, entry.entry_id, None)
+    for other in others:
+        if other.entry_id in changes:
+            new = changes[other.entry_id]
+        elif entry.entry_id in links[other.entry_id]:
+            new = [i for i in links[other.entry_id] if i != entry.entry_id]  # links that disagreed
+        else:
+            continue
+        if new:
+            link = {
+                CONF_LINK_TYPE: LINK_SYNCED, CONF_LINK_ENTRY: new[0], CONF_LINK_ENTRIES: new,
+                CONF_SYNC_RULE: other.data.get(CONF_SYNC_RULE, SYNC_EITHER),
+            }
+        else:
+            link = {CONF_LINK_TYPE: LINK_NONE}
+        data = {k: v for k, v in other.data.items() if k not in (CONF_LINK_ENTRY, CONF_LINK_ENTRIES, CONF_SYNC_RULE)}
+        hass.config_entries.async_update_entry(other, data={**data, **link})
+        hass.config_entries.async_schedule_reload(other.entry_id)

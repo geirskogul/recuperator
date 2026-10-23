@@ -162,18 +162,25 @@ class LinkedUnitSensor(RecuperatorEntity, SensorEntity):
     def extra_state_attributes(self) -> dict:
         c = self._controller
         if c.link_entry_id:
-            other = c.hass.config_entries.async_get_entry(c.link_entry_id)
+            sides = c.sides()
             return {
                 "linked_unit": c.link_type,
-                "synced_with": other.title if other else None,
+                "synced_with": _titles(c, sides[1] if sides else c.link_entries),
+                "same_side": _titles(c, [i for i in sides[0] if i != c.entry.entry_id]) if sides else None,
                 "sync_rule": c.sync_rule,
-                "in_step": c.synced() is not None,
+                "in_step": c.synced(),
             }
         return {
             "linked_unit": c.link_type,
             "exhaust_fan": c.link_exhaust_switch,
             "intake_fan": c.link_intake_switch,
         }
+
+
+def _titles(c, entry_ids: list[str]) -> str | None:
+    """Recuperators' names, joined: "Recuperator 2" or "Small 1, Small 2"."""
+    entries = [c.hass.config_entries.async_get_entry(i) for i in entry_ids]
+    return ", ".join(e.title for e in entries if e is not None) or None
 
 
 class AbsoluteHumiditySensor(RecuperatorEntity, SensorEntity):

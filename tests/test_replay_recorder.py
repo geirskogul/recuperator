@@ -107,3 +107,39 @@ async def test_replay_of_a_synced_pair_with_a_gif(hass: HomeAssistant, fans, tmp
     )
     assert response["linked"] is None and "gif_url" not in response
     assert ">Beta</text>" not in alpha.runtime_data.replay_svg.decode()
+
+
+async def test_replay_of_a_synced_group_draws_every_unit(hass: HomeAssistant, tmp_path) -> None:
+    """Big, then Small 1 and Small 2 under it."""
+    from homeassistant.setup import async_setup_component
+
+    from .test_groups_ha import DATA_S1, DATA_S2, _entry, _synced
+    from .conftest import DATA
+
+    assert await async_setup_component(
+        hass, "input_boolean", {"input_boolean": {n: {"name": n} for n in ("ex", "in", "lex", "lin", "ex3", "in3")}}
+    )
+    hass.config.config_dir = str(tmp_path)
+    for probe in (INSIDE, "sensor.in_s1", "sensor.in_s2"):
+        set_probe(hass, probe, 20.0)
+    for probe in (OUTSIDE, "sensor.out_s1", "sensor.out_s2"):
+        set_probe(hass, probe, 5.0)
+    big = await setup_entry(hass, _entry("big", "Big", {**DATA, **_synced("s1", "s2")}))
+    await setup_entry(hass, _entry("s1", "Small 1", {**DATA_S1, **_synced("big")}))
+    await setup_entry(hass, _entry("s2", "Small 2", {**DATA_S2, **_synced("big")}))
+    await async_wait_recording_done(hass)
+
+    response = await hass.services.async_call(
+        DOMAIN, "create_replay", {"config_entry_id": "big", "hours": 0.25, "playback_seconds": 10},
+        blocking=True, return_response=True,
+    )
+    assert response["linked"] == "Small 1, Small 2"
+    svg = big.runtime_data.replay_svg.decode()
+    assert 'viewBox="0 0 640 1140"' in svg and ">Small 2</text>" in svg
+
+    # from a small one: itself, the other small one beside it, then Big
+    response = await hass.services.async_call(
+        DOMAIN, "create_replay", {"config_entry_id": "s2", "hours": 0.25, "playback_seconds": 10},
+        blocking=True, return_response=True,
+    )
+    assert response["linked"] == "Small 1, Big"

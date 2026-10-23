@@ -149,12 +149,12 @@ class RecuperatorReplayCard extends HTMLElement {
     return controls;
   }
 
-  /* Checkboxes for the Replay device's switches: also a GIF, and the synced recuperator. */
+  /* Checkboxes for the Replay device's switches: also a GIF, and the synced recuperators. */
   _buildOptions() {
     const options = document.createElement("div");
     options.className = "options";
     this._options = {};
-    for (const [key, text] of [["replay_linked", "Include synced recuperator"], ["replay_gif", "Also save a GIF"]]) {
+    for (const [key, text] of [["replay_linked", "Include synced recuperators"], ["replay_gif", "Also save a GIF"]]) {
       const label = document.createElement("label");
       const box = document.createElement("input");
       box.type = "checkbox";

@@ -241,3 +241,22 @@ def test_gif_replay() -> None:
     assert gif_frame_count(1440, 60) == MAX_FRAMES
     assert gif_frame_count(1440, 2) == 100  # no frame shorter than 20 ms
     assert gif_frame_count(60, 60) == 60
+
+
+def test_replay_of_a_synced_group_has_a_panel_each() -> None:
+    from io import BytesIO
+
+    from PIL import Image
+
+    from custom_components.recuperator.gif import MAX_FRAMES, render_replay_gif
+
+    others = [(frames(), "Small 1"), (frames(), "Small 2")]
+    svg = render_replay_svg(frames(), 30, "Big", others=others)
+    assert 'viewBox="0 0 640 1140"' in svg
+    assert ">Big</text>" in svg and ">Small 1</text>" in svg and ">Small 2</text>" in svg
+    with pytest.raises(ValueError):
+        render_replay_svg(frames(), 30, others=[(frames(), "Small 1"), (frames(5), "Small 2")])
+
+    trio = Image.open(BytesIO(render_replay_gif(frames(400), 60, "Big", others=[(frames(400), "S1"), (frames(400), "S2")])))
+    assert trio.size == (640, 1140)
+    assert trio.n_frames == MAX_FRAMES * 2 // 3  # about a pair's file size

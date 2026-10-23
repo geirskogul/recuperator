@@ -92,7 +92,7 @@ REASON_SUPPLY_DROP = "supply_drop"  # air entering the room fell too far below r
 REASON_SUPPLY_COLD = "supply_cold"  # air entering the room got colder than the hard floor
 REASON_PHASE_LIMIT = "phase_limit"  # the phase limit kept it shorter than the other phase
 REASON_DRYING = "drying"  # drying kept the intake shorter than the exhaust
-REASON_SYNCED = "synced"  # the synced recuperator's phase ended, and this one switched with it
+REASON_SYNCED = "synced"  # another synced recuperator's phase ended, and the group switched with it
 REASON_STARTED = "started"  # breathing was switched on
 REASON_STOPPED = "stopped"  # breathing was switched off
 REASONS = [
@@ -213,7 +213,7 @@ DEFAULTS: dict[str, float] = {s.key: s.default for s in SETTINGS}
 
 # Settings shown on the Replay device and Configure page, not with the cycle settings.
 REPLAY_KEYS = ("replay_hours", "replay_playback_seconds", "replay_frames")
-# ...and its on/off settings: draw a synced recuperator too, and also save a GIF.
+# ...and its on/off settings: draw the synced recuperators too, and also save a GIF.
 CONF_REPLAY_LINKED = "replay_linked"
 CONF_REPLAY_GIF = "replay_gif"
 REPLAY_SWITCHES = (CONF_REPLAY_LINKED, CONF_REPLAY_GIF)
@@ -238,16 +238,20 @@ LINK_EXHAUST_FAN = "exhaust_fan"  # one fan blowing indoor air out
 LINK_SYNCED = "synced"  # another Recuperator entry, with its own probes and settings
 LINK_TYPES = [LINK_NONE, LINK_RECUPERATOR, LINK_INTAKE_FAN, LINK_EXHAUST_FAN, LINK_SYNCED]
 
-# A synced recuperator: the other entry, and when the pair switches phases (see sync.py).
-# Both entries store the link, each pointing at the other. The lead rules are
-# stored from each entry's own point of view, so "this" on one is "partner" on the other.
+# Synced recuperators: the entries on the other side of this one's group, and when
+# the group switches phases (see sync.py). Every member stores the units on the
+# other side; link_entry is the first of them (all that 0.5 and earlier read).
+# The lead rules (pairs only) are stored from each entry's own point of view, so
+# "this" on one is "partner" on the other; the other rules are the same on all.
 CONF_LINK_ENTRY = "link_entry"
+CONF_LINK_ENTRIES = "link_entries"
 CONF_SYNC_RULE = "sync_rule"
-SYNC_EITHER = "either"  # the first unit to finish its phase switches both
-SYNC_BOTH = "both"  # both must finish (the first keeps running until then)
-SYNC_AVERAGE = "average"  # the two units' progress, averaged, must reach the target
-SYNC_LEAD_THIS = "lead_this"  # only this unit's phase decides
-SYNC_LEAD_PARTNER = "lead_partner"  # only the synced unit's phase decides
+MAX_GROUP = 4  # synced recuperators in one group, both sides together
+SYNC_EITHER = "either"  # the first unit to finish its phase switches the group
+SYNC_BOTH = "both"  # all must finish (the first keep running until then)
+SYNC_AVERAGE = "average"  # the units' progress, averaged, must reach the target
+SYNC_LEAD_THIS = "lead_this"  # pairs only: only this unit's phase decides
+SYNC_LEAD_PARTNER = "lead_partner"  # pairs only: only the synced unit's phase decides
 SYNC_RULES = [SYNC_EITHER, SYNC_BOTH, SYNC_AVERAGE, SYNC_LEAD_THIS, SYNC_LEAD_PARTNER]
 
 # What the linked unit is doing (the state of the "Linked unit" sensor).

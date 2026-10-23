@@ -192,7 +192,7 @@ Drying stands down, and the **Drying** sensor says why, when:
 
 The draft and frost protections still come first, and intakes a drying lean cuts short end with the reason *Drying*.
 
-**In a [synced pair](#synced-recuperator),** drying is decided for the pair. Either unit's lean applies to both units' intakes, so a second unit without a humidity sensor of its own dries along with the first. A unit whose intake the lean cuts short rests, with both fans off, while the other unit finishes its exhaust. So the basement blows out more than it takes in through the two cores, and the breaths keep their length. A unit whose own drying stands down because its room is too cold or the outdoor air too humid doesn't take the other unit's lean. The Drying sensor's `synced_intake_share` attribute shows the other unit's lean when it applies.
+**In a [synced group](#synced-recuperators),** drying is decided for the group. The strongest lean of any unit applies to every unit's intakes, so a unit without a humidity sensor of its own dries along with the others. A unit whose intake the lean cuts short rests, with both fans off, while the others finish. So the basement blows out more than it takes in through the two cores, and the breaths keep their length. A unit whose own drying stands down because its room is too cold or the outdoor air too humid doesn't take the other unit's lean. The Drying sensor's `synced_intake_share` attribute shows the other units' strongest lean when it applies.
 
 ### Phase limit
 
@@ -205,7 +205,7 @@ A few things still come first:
 - **Passive intakes** the room refills on its own are never limited. One that a linked unit pulls in is limited as usual (see [Passive intake](#passive-intake)).
 - **After an intake that ran out of heat,** Limited exhaust sits out one exhaust and lets it run by its own rules. That covers intakes ended by *Supply colder than room*, *Supply below floor* or *Cold limit*. Such an intake was short because the core had little heat to give. Cutting the next exhaust to match would store even less, and the breaths would shrink one after another down to *Minimum phase*. The Phase sensor's `phase_limit` attribute shows `paused` when this happens.
 - **After an intake that drying or the phase limit cut short,** Limited exhaust sits out one exhaust too, so drying and Limited exhaust can't feed each other.
-- **In a [synced pair](#synced-recuperator),** a phase the limit ends early never ends the other unit's phase. The limited unit rests, with both fans off, while the other unit finishes its phase by its own rules, and then the pair switches. The Phase sensor shows *Pause* and its `resting` attribute is true.
+- **In a [synced group](#synced-recuperators),** a phase the limit ends early never ends another unit's phase. The limited unit rests, with both fans off, while the others finish their phases by their own rules, and then the group switches. The Phase sensor shows *Pause* and its `resting` attribute is true.
 
 ### Passive intake
 
@@ -223,30 +223,39 @@ If this unit's exhausts still come out shorter than the linked unit's, less air 
 
 A second unit can breathe in the opposite direction, so the house stays balanced: while this one exhausts, the other takes air in, and the other way round. Set it up under **Configure**, **Linked unit**. It can be a *sensorless recuperator* (a second unit with exhaust and intake fans but no probes of its own), or just a single intake or exhaust fan. It has no say: it follows this unit's phases and pauses. A sensorless recuperator gets the same interlock as the main one: its two fans never run together. With [Passive intake](#passive-intake) on, its intake fan rests too, and the two take turns exhausting.
 
-#### Synced recuperator
+#### Synced recuperators
 
-A second recuperator with its own probes can do better than follow. Add it as a Recuperator of its own, then on either one choose **Configure**, **Linked unit**, *Synced recuperator*, and pick the other. Both are linked to each other when you save. Each keeps its own probes, room and outdoor sensors, settings, diagram and Heat recovery, but the two never breathe the same way at once, and they switch together.
+A second recuperator with its own probes can do better than follow. Add it as a Recuperator of its own, then on either one choose **Configure**, **Linked unit**, *Synced recuperators*, and pick the other. Both are linked to each other when you save. Each keeps its own probes, room and outdoor sensors, settings, diagram and Heat recovery, but the two never breathe the same way at once, and they switch together.
 
-The **Sync rule** decides when they switch:
+**More than two.** A synced group has two sides that breathe opposite ways, and holds up to four recuperators:
 
-| Rule | The pair switches |
+- **One big unit against two small ones.** On the big one, pick both small ones. While the big one exhausts, both small ones take air in, and the other way round.
+- **Four units as two against two.** Pick two units, then on a third unit pick one of the first two's partners: it joins the side opposite its pick. Two separate synced pairs work just as well, often a little better, because their rests don't line up.
+
+Picking a unit that is already synced always puts this one on the side opposite it. Two groups never merge, and you can't pick units from both sides of a group. To take a unit out, untick it on the other side's page, or set its own **Linked unit** to *None*.
+
+Balance comes from the fans: the two sides should move about the same amount of air. The integration can't measure that, so a big unit should move roughly what the two small ones move together. Three equal units can't be balanced, whatever the timing: with plain on/off fans one unit's worth of air always goes one way. Use two as a pair and run the third on its own, or add a fourth. A round, with four units each a quarter breath apart, isn't offered: it moves the same air as two pairs.
+
+The **Sync rule** decides when the group switches:
+
+| Rule | The group switches |
 |---|---|
-| *Either is done* (default) | as soon as either unit's phase is done. A phase can end a little early for the other unit. |
-| *Both are done* | once both are done. The unit that finished first keeps its fan running until then, so air keeps moving both ways. |
-| *Average of both* | once the two units' progress towards their *Recovery target*, averaged, gets there. Both must be past *Minimum phase*. |
-| *This recuperator leads* / *The synced recuperator leads* | only by the lead unit's own rules. The other unit just measures, except that its own protections, phase limit and drying rest it, and while the lead rests, the other unit's own rules end the phase. |
+| *Either is done* (default) | as soon as any unit's phase is done. A phase can end a little early for the others. |
+| *Both are done* | once every unit is done. A unit that finished first keeps its fan running until then, so air keeps moving both ways. Recommended for three or more, so one small unit never cuts its neighbour's phase short. |
+| *Average of both* | once the units' progress towards their *Recovery target*, averaged, gets there. All must be past *Minimum phase*. |
+| *This recuperator leads* / *The synced recuperator leads* | pairs only: only by the lead unit's own rules. The other unit just measures, except that its own protections, phase limit and drying rest it, and while the lead rests, the other unit's own rules end the phase. |
 
-Except under a lead rule, *Maximum phase* on either unit switches the pair at once. A unit that switched because of the other one gives the reason *Synced recuperator switched*. Both start again together, once both pauses are over.
+Except under a lead rule, *Maximum phase* on any unit switches the group at once. A unit that switched because of another one gives the reason *Synced group switched*. All start again together, once all pauses are over.
 
-A phase that ends early never ends the other unit's phase, whatever ended it: room protection (*Supply colder than room*, *Supply below floor*), the *Cold limit*, the [phase limit](#phase-limit) or [drying](#drying). That unit rests, with both fans off, until the other unit has finished its phase by its own rules (whatever the sync rule, the other unit decides then). The Phase sensor shows *Pause*, and its `resting` attribute is true. Cutting the other unit short instead would make the breaths shrink one after another. A shorter exhaust stores less heat in the core, so that unit's next intake runs out of heat sooner and cuts the other unit's exhaust shorter still. A limit would likewise measure against the shorter phase. Drying is decided for the pair: either unit's lean applies to both.
+A phase that ends early never ends another unit's phase, whatever ended it: [draft protection](#how-it-breathes) (*Supply colder than room*, *Supply below floor*), the *Cold limit*, the [phase limit](#phase-limit) or [drying](#drying). That unit rests, with both fans off, until the others have finished their phases by their own rules. While a whole side rests, the units still running switch by the sync rule among themselves, and a unit left running alone decides by its own rules. The Phase sensor shows *Pause*, and its `resting` attribute is true. Cutting the other units short instead would make the breaths shrink one after another. A shorter exhaust stores less heat in the core, so that unit's next intake runs out of heat sooner and cuts the other unit's exhaust shorter still. A limit would likewise measure against the shorter phase. Drying is decided for the group: the strongest lean of any unit applies to all of them.
 
-While one unit rests, the other still blows air in or out, so some air comes in or leaves through the resting unit's hose and other gaps. With long *Timed* breaths in cold weather the rests can be long. With 1600 s breaths and a 300 s *Cold intake limit*, for example, each unit takes air in for 300 s and then rests for 1300 s while the other finishes its exhaust.
+While a unit rests, the others still blow air in or out, so some air comes in or leaves through the resting unit's hose and other gaps. With long *Timed* breaths in cold weather the rests can be long. With 1600 s breaths and a 300 s *Cold intake limit*, for example, each unit takes air in for 300 s and then rests for 1300 s while the other finishes its exhaust.
 
-Changing only the sync rule applies at once; the rule is shown from each unit's side, so *This recuperator leads* on one is *The synced recuperator leads* on the other.
+Changing only the sync rule applies at once, on every unit of the group; a lead rule is shown from each unit's side, so *This recuperator leads* on one is *The synced recuperator leads* on the other.
 
-**Breathing** and **Mode** stay separate on each unit. The two keep in step only while both are breathing in *Automatic* or *Timed*. While one is off, or runs *Exhaust only* or *Intake only* (drying's included), each breathes on its own. When they join up again, both pause once and set off opposite ways. The Phase sensor's `synced` attribute says whether they are in step, and the *Linked unit* sensor shows what the other one is doing.
+**Breathing** and **Mode** stay separate on each unit. A unit keeps in step only while it's breathing in *Automatic* or *Timed*. While it's off, or runs *Exhaust only* or *Intake only* (drying's included), it breathes on its own and the rest of the group carries on without it. If a whole side is out (the big unit is off, say), the units left pair up among themselves, so they stay balanced. When a unit joins again, the group pauses once and sets off opposite ways. The Phase sensor's `synced` attribute says whether a unit is in step. The *Linked unit* sensor shows what the other side is doing, and its `synced_with` and `same_side` attributes name the units on each side.
 
-Removing one of the two leaves the other unlinked, breathing on its own.
+Removing a recuperator takes it out of its group. A unit left without anyone on the other side is unlinked and breathes on its own.
 
 ## Watching it breathe
 
@@ -302,9 +311,9 @@ data:
   gif: true              # also save a GIF
 ```
 
-**A synced pair in one replay.** When the recuperator has a [synced recuperator](#synced-recuperator), its replay draws both: this one on top, the synced one underneath, each with its own pipe and graph. Both graphs share one temperature scale, so you can compare them at a glance, and the cursors sweep in step. To replay just the one, turn off **Include synced recuperator** on the Replay device, untick it on the replay card, or give `include_linked: false` to the action.
+**A synced group in one replay.** When the recuperator has [synced recuperators](#synced-recuperators), its replay draws them all: this one on top, then the others of its side, then the other side, each with its own pipe and graph. All graphs share one temperature scale, so you can compare them at a glance, and the cursors sweep in step. To replay just the one, turn off **Include synced recuperator** on the Replay device, untick it on the replay card, or give `include_linked: false` to the action. A GIF of three or four units keeps fewer frames, so it stays about the size of a pair's.
 
-**GIF.** An animated SVG plays in browsers and on dashboards, but not in most chat apps, e-mail or phone galleries. For those, turn on **Also save a GIF** on the Replay device, tick it on the replay card, or give `gif: true` to the action. The replay is then also saved as `/config/www/recuperator/<name>-replay.gif`, and the card shows **Download SVG** and **Download GIF** links. A GIF takes a few seconds to draw and keeps at most 200 frames, each stored nearly whole. A 60-second loop of one unit comes to about 3 MB, and a synced pair to about twice that. Fewer **Replay frames** make a smaller file. It's drawn on a white background, because GIFs have no proper transparency. It leaves out the airflow streaks.
+**GIF.** An animated SVG plays in browsers and on dashboards, but not in most chat apps, e-mail or phone galleries. For those, turn on **Also save a GIF** on the Replay device, tick it on the replay card, or give `gif: true` to the action. The replay is then also saved as `/config/www/recuperator/<name>-replay.gif`, and the card shows **Download SVG** and **Download GIF** links. A GIF takes a few seconds to draw and keeps at most 200 frames, each stored nearly whole. A 60-second loop of one unit comes to about 3 MB, and a synced pair or group to about twice that. Fewer **Replay frames** make a smaller file. It's drawn on a white background, because GIFs have no proper transparency. It leaves out the airflow streaks.
 
 The replay has its own small **Replay** device, listed under *Connected devices* on the recuperator's page. It holds the latest animation, a **Create** button and the default settings for new replays, including the GIF and synced-recuperator switches. Each replay is also saved as `/config/www/recuperator/<name>-replay.svg`, which you can open or share. Keep in mind that Home Assistant serves that folder without a login. Replays can only go back as far as your recorder keeps history, which is 10 days by default.
 
@@ -341,19 +350,27 @@ The replay has its own small **Replay** device, listed under *Connected devices*
 
 ## Recent changes
 
+- **0.6.0.** Synced groups: up to four recuperators breathing as one.
+  - **One big unit against two small ones, or two against two.** On **Linked unit**, *Synced recuperators* now takes several units. Each keeps its own probes, draft protection, settings and rests. See [Synced recuperators](#synced-recuperators).
+  - **Everything that worked for a pair works for the group:** a unit stopped early rests while the others finish, *Maximum phase* switches everyone, and drying is shared. Pairs breathe exactly as before; a test replays 0.5.14's pair logic second by second against the new code.
+  - **Under *Both are done*, the rule now also holds while a whole side rests.** The units still running wait for each other instead of the first one switching them all.
+  - **When a whole side is off, the units left pair up** among themselves instead of breathing alone and out of balance.
+  - **Replays draw the whole group**, one panel per unit.
+  - **Fan groups.** A switch group that holds another recuperator's fan, or this one's own fan as its linked unit, is now refused, like the fan itself.
+  - Lead rules stay for pairs only.
 - **0.5.14.** No more shrinking breaths from the phase limit, drying or the protections.
   - **Synced pairs.** When the phase limit or drying ends one unit's phase early, that unit now rests with both fans off while the other finishes its phase, and then the pair switches. Before, it ended the other unit's phase too, and under the *Either*, *Both* and *Average* rules the breaths could shrink one after another down to *Minimum phase*. Under a lead rule, the follower's phase limit and drying now take effect (they used to be ignored), and while the lead rests, the follower's own rules end the phase.
   - **Synced pairs, protections.** Room protection (*Supply colder than room*, *Supply below floor*) and the *Cold limit* now rest the unit they stop, in the same way, instead of switching the pair. Before, an intake that ran its core out of heat cut the other unit's exhaust short, which left that core less heat for its own next intake. In cold weather, or with a small *Maximum supply drop*, the breaths shrank one after another down to *Minimum phase*, even in *Timed* mode.
   - **Drying is decided for the pair,** so a unit without a humidity sensor dries along with the other.
   - **Automatic mode, single units too.** The phase limit and drying now measure against the last phase that ran free. Before, they measured against the phase just before, which in *Automatic* had itself ended early because the limited phase before it left the core almost untouched, so the breaths shrank down to *Minimum phase*. Limited exhaust also sits out the exhaust after an intake that drying cut short.
-  - See [Phase limit](#phase-limit) and [Synced recuperator](#synced-recuperator).
+  - See [Phase limit](#phase-limit) and [Synced recuperator](#synced-recuperators).
 - **0.5.13.** Passive intake with a linked unit: an intake that the linked unit's exhaust pulls in now counts as an ordinary intake with its fan off. Before, it could run up to *Passive intake maximum* while this unit's exhausts stopped at *Maximum phase*, so one phase was always short. A sensorless recuperator's intake fan now rests too, so the two take turns exhausting. See [Passive intake](#passive-intake).
 - **0.5.12.** The replay card loads reliably in the Companion app. It now adds itself to your dashboards' resources, which dashboards fetch from Home Assistant every time they open. Before, it came with the page, which the app can keep an old copy of. That showed *Custom element doesn't exist*, often only on the phone.
 - **0.5.11.** While a fan runs, white streaks of air flow through the pipe in the [diagram](#the-diagram) and in [replays](#replays), slowly during a passive intake. **Diagram airflow** turns them off.
 - **0.5.10.** Ready for Home Assistant 2026.10: the Replay device is linked to its recuperator the new way, so there is no deprecation warning in the log. Older versions keep working.
 - **0.5.9.** Under **Linked unit**, *Full recuperator* is now called *Sensorless recuperator*, so it is clear which unit decides the cycles: a sensorless one has no probes and follows this one, while a synced one judges its own phases. Existing setups are unchanged.
 - **0.5.8.**
-  - A [synced recuperator](#synced-recuperator): two full recuperators, each with its own probes and settings, breathing opposite ways, with a choice of when the pair switches.
+  - A [synced recuperator](#synced-recuperators): two full recuperators, each with its own probes and settings, breathing opposite ways, with a choice of when the pair switches.
   - [Replays](#replays) of a synced pair show both units in one animation.
   - Replays can also be saved as a GIF, for sharing where an SVG doesn't play. The replay card links to the files it made.
 - **0.5.7.** Configure, Settings is grouped into sections instead of one long list, and the README has a grouped dashboard card.

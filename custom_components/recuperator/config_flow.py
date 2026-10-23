@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any
 
 import voluptuous as vol
@@ -20,6 +21,7 @@ from .const import (
     CONF_EXHAUST_SWITCH,
     CONF_INSIDE_SENSOR,
     CONF_INTAKE_SWITCH,
+    CONF_LINK_ENTRIES,
     CONF_LINK_ENTRY,
     CONF_LINK_EXHAUST_SWITCH,
     CONF_LINK_INTAKE_SWITCH,
@@ -44,6 +46,7 @@ from .const import (
     LINK_SYNCED,
     LINK_TYPES,
     LIMIT_OFF,
+    MAX_GROUP,
     MODE_TIMED,
     PHASE_LIMITS,
     REPLAY_KEYS,
@@ -55,7 +58,7 @@ from .const import (
     unique_id_for,
 )
 from .controller import linked_fans
-from .sync import mirror
+from .sync import LEAD_RULES, link_entries_of, mirror, sides_of
 
 FAN_DOMAINS = ["switch", "fan", "light", "input_boolean"]
 CONF_RESET = "reset_to_defaults"
@@ -86,16 +89,32 @@ def _devices_schema(defaults: dict[str, Any]) -> dict:
     }
 
 
-def _errors(data: dict[str, Any], in_use: dict[str, str] | None = None) -> dict[str, str]:
+def _errors(hass, data: dict[str, Any], in_use: dict[str, str] | None = None) -> dict[str, str]:
     errors: dict[str, str] = {}
-    if data[CONF_EXHAUST_SWITCH] == data[CONF_INTAKE_SWITCH]:
+    if _expand(hass, data[CONF_EXHAUST_SWITCH]) & _expand(hass, data[CONF_INTAKE_SWITCH]):
         errors[CONF_INTAKE_SWITCH] = "same_switch"
     if data[CONF_INSIDE_SENSOR] == data[CONF_OUTSIDE_SENSOR]:
         errors[CONF_OUTSIDE_SENSOR] = "same_sensor"
     for key in (CONF_EXHAUST_SWITCH, CONF_INTAKE_SWITCH):
-        if in_use and data[key] in in_use:
+        if in_use and _expand(hass, data[key]) & in_use.keys():
             errors.setdefault(key, "fan_in_use")
     return errors
+
+
+def _expand(hass, entity_id: str | None, seen: set[str] | None = None) -> set[str]:
+    """A fan and, for a group of fans (a switch group, say), every fan in it."""
+    seen = set() if seen is None else seen
+    if not entity_id or entity_id in seen:
+        return set()
+    seen.add(entity_id)
+    found = {entity_id}
+    state = hass.states.get(entity_id)
+    members = state.attributes.get("entity_id") if state is not None else None
+    if isinstance(members, (list, tuple)):
+        for member in members:
+            if isinstance(member, str):
+                found |= _expand(hass, member, seen)
+    return found
 
 
 def _entry_fans(entry) -> list[str]:
@@ -105,12 +124,13 @@ def _entry_fans(entry) -> list[str]:
 
 
 def _fans_in_use(hass, exclude_entry_id: str | None = None) -> dict[str, str]:
-    """fan entity -> title of the recuperator that already drives it."""
+    """fan entity -> title of the recuperator that already drives it (the fans in its groups included)."""
     return {
         fan: entry.title
         for entry in hass.config_entries.async_entries(DOMAIN)
         if entry.entry_id != exclude_entry_id
-        for fan in _entry_fans(entry)
+        for driven in _entry_fans(entry)
+        for fan in _expand(hass, driven)
     }
 
 
@@ -123,7 +143,7 @@ class RecuperatorConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_user(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = _errors(user_input, _fans_in_use(self.hass))
+            errors = _errors(self.hass, user_input, _fans_in_use(self.hass))
             if not errors:
                 await self.async_set_unique_id(unique_id_for(user_input))
                 self._abort_if_unique_id_configured()
@@ -141,8 +161,8 @@ class RecuperatorConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             # Other recuperators' fans, and this one's linked unit, are off limits.
             in_use = _fans_in_use(self.hass, entry.entry_id)
-            in_use.update({fan: entry.title for fan in linked_fans(entry.data) if fan})
-            errors = _errors(user_input, in_use)
+            in_use.update({f: entry.title for fan in linked_fans(entry.data) for f in _expand(self.hass, fan)})
+            errors = _errors(self.hass, user_input, in_use)
             if not errors:
                 # The unique ID follows the fans, so the old pair is not left "taken".
                 return self.async_update_reload_and_abort(
@@ -216,18 +236,23 @@ class RecuperatorOptionsFlow(OptionsFlow):
 
         Stored with the fans and probes (not with the settings, so resetting the
         settings keeps it). Saving restarts the recuperator with the new link.
-        A synced recuperator is stored on both entries, each pointing at the
-        other; changing only the sync rule applies at once, without a restart.
+        Synced recuperators are stored on every member of the group, each
+        pointing at the other side (see plan_link); changing only the sync rule
+        applies at once, without a restart.
         """
         entry = self.config_entry
         errors: dict[str, str] = {}
         if user_input is not None:
-            errors = _link_errors(user_input, entry, _fans_in_use(self.hass, entry.entry_id))
-            errors.update(_sync_errors(self.hass, user_input, entry))
+            errors = _link_errors(self.hass, user_input, entry, _fans_in_use(self.hass, entry.entry_id))
+            changes, error = _plan(self.hass, entry, user_input)
+            if error:
+                errors[CONF_SYNC_RULE if error == "sync_rule_pair_only" else CONF_LINK_ENTRY] = error
             if not errors:
-                _save_link(self.hass, entry, _link_data(user_input))
+                _save_link(self.hass, entry, _link_data(user_input), changes)
                 return self.async_create_entry(data=dict(entry.options))
-        current = user_input if user_input is not None else dict(entry.data)
+        current = user_input if user_input is not None else {
+            **entry.data, CONF_LINK_ENTRY: link_entries_of(entry.data)
+        }
         others = [e for e in self.hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id]
         return self.async_show_form(step_id="link", data_schema=_link_schema(current, others), errors=errors)
 
@@ -264,7 +289,7 @@ class RecuperatorOptionsFlow(OptionsFlow):
         controller = self.config_entry.runtime_data
         for key in REPLAY_SWITCHES:
             if key == CONF_REPLAY_LINKED and not controller.link_entry_id:
-                continue  # only with a synced recuperator
+                continue  # only with synced recuperators
             schema[vol.Optional(key, default=controller.option(key))] = selector.BooleanSelector()
         return self.async_show_form(step_id="replay", data_schema=vol.Schema(schema))
 
@@ -332,7 +357,9 @@ class RecuperatorOptionsFlow(OptionsFlow):
 
 # -- the Linked unit page ------------------------------------------------------------
 
-LINK_KEYS = (CONF_LINK_TYPE, CONF_LINK_EXHAUST_SWITCH, CONF_LINK_INTAKE_SWITCH, CONF_LINK_ENTRY, CONF_SYNC_RULE)
+LINK_KEYS = (
+    CONF_LINK_TYPE, CONF_LINK_EXHAUST_SWITCH, CONF_LINK_INTAKE_SWITCH, CONF_LINK_ENTRY, CONF_LINK_ENTRIES, CONF_SYNC_RULE
+)
 # the fans each kind of linked unit needs
 LINK_NEEDS = {
     LINK_NONE: (),
@@ -344,7 +371,7 @@ LINK_NEEDS = {
 
 
 def _link_schema(current: dict[str, Any], others: list) -> vol.Schema:
-    """Type of linked unit, its fan(s) or the synced recuperator; pre-filled where known."""
+    """Type of linked unit, its fan(s) or the synced recuperators; pre-filled where known."""
 
     def fan_key(key: str):
         return vol.Optional(key, description={"suggested_value": current.get(key)})
@@ -358,6 +385,7 @@ def _link_schema(current: dict[str, Any], others: list) -> vol.Schema:
         selector.SelectSelectorConfig(
             options=[selector.SelectOptionDict(value=e.entry_id, label=e.title) for e in others],
             mode=selector.SelectSelectorMode.DROPDOWN,
+            multiple=True,
         )
     )
     rule_selector = selector.SelectSelector(
@@ -372,51 +400,141 @@ def _link_schema(current: dict[str, Any], others: list) -> vol.Schema:
     })
 
 
-def _link_errors(user_input: dict[str, Any], entry, in_use: dict[str, str]) -> dict[str, str]:
+def _link_errors(hass, user_input: dict[str, Any], entry, in_use: dict[str, str]) -> dict[str, str]:
     """The linked unit's fans: present for its type, and not driven by anything else."""
     errors: dict[str, str] = {}
-    own = {entry.data[CONF_EXHAUST_SWITCH], entry.data[CONF_INTAKE_SWITCH]}
+    own = _expand(hass, entry.data[CONF_EXHAUST_SWITCH]) | _expand(hass, entry.data[CONF_INTAKE_SWITCH])
     needed = LINK_NEEDS[user_input[CONF_LINK_TYPE]]
     for key in needed:
         fan = user_input.get(key)
         if not fan:
             errors[key] = "link_fan_missing"
-        elif fan in own:
+        elif _expand(hass, fan) & own:
             errors[key] = "link_fan_is_own"
-        elif fan in in_use:
+        elif _expand(hass, fan) & in_use.keys():
             errors[key] = "fan_in_use"
-    if len(needed) == 2 and not errors and user_input[needed[0]] == user_input[needed[1]]:
+    if len(needed) == 2 and not errors and _expand(hass, user_input[needed[0]]) & _expand(hass, user_input[needed[1]]):
         errors[needed[1]] = "same_switch"
     return errors
 
 
-def _sync_errors(hass, user_input: dict[str, Any], entry) -> dict[str, str]:
-    """A synced recuperator: picked, and not already linked to anything else."""
-    if user_input[CONF_LINK_TYPE] != LINK_SYNCED:
-        return {}
-    other = hass.config_entries.async_get_entry(user_input.get(CONF_LINK_ENTRY) or "")
-    if other is None or other.domain != DOMAIN or other.entry_id == entry.entry_id:
-        return {CONF_LINK_ENTRY: "link_entry_missing"}
-    if other.data.get(CONF_LINK_TYPE, LINK_NONE) != LINK_NONE and _synced_to(other) != entry.entry_id:
-        return {CONF_LINK_ENTRY: "link_entry_taken"}
-    return {}
+def _picks(user_input: dict[str, Any]) -> list[str]:
+    """The synced recuperators picked on the Linked unit page."""
+    value = user_input.get(CONF_LINK_ENTRY) or []
+    return [value] if isinstance(value, str) else list(value)
 
 
-def _synced_to(entry) -> str | None:
-    """The entry ID of the recuperator this one is synced with, if any."""
-    return entry.data.get(CONF_LINK_ENTRY) if entry.data.get(CONF_LINK_TYPE) == LINK_SYNCED else None
+def _plan(hass, entry, user_input: dict[str, Any]) -> tuple[dict[str, list[str] | None], str | None]:
+    """The synced links every recuperator should have after saving this page, or why not."""
+    entries = hass.config_entries.async_entries(DOMAIN)
+    links = {e.entry_id: link_entries_of(e.data) for e in entries}
+    kinds = {e.entry_id: e.data.get(CONF_LINK_TYPE, LINK_NONE) for e in entries}
+    picks = _picks(user_input) if user_input[CONF_LINK_TYPE] == LINK_SYNCED else None
+    if picks is not None and any(p not in links for p in picks):
+        return {}, "link_entry_missing"
+    changes, error = plan_link(links, kinds, entry.entry_id, picks)
+    if error is None and picks is not None:
+        if user_input.get(CONF_SYNC_RULE) in LEAD_RULES and sum(1 for v in changes.values() if v) > 2:
+            error = "sync_rule_pair_only"
+    return changes, error
+
+
+def plan_link(
+    links: Mapping[str, list[str]], kinds: Mapping[str, str], me: str, picks: list[str] | None
+) -> tuple[dict[str, list[str] | None], str | None]:
+    """Work out every recuperator's synced links after `me` picks the units on its other side.
+
+    `links` holds each entry's synced links (the units on the other side of its
+    group), `kinds` each entry's Linked unit type. `picks` is None when `me`
+    stops being synced. Returns ({entry: its new links, or None to unlink}, an
+    error), covering every entry the change touches, `me` included.
+
+    * Picking free recuperators makes them the other side of `me`'s group.
+    * Picking units of one side of an existing group (while `me` has no group)
+      joins it, on the side opposite them.
+    * In a group, the picks become the whole other side: a unit no longer
+      picked is unlinked, and so is everyone once a side would be left empty.
+    * Two groups never merge; a group holds at most MAX_GROUP recuperators.
+    """
+    current = sides_of(me, links)
+    changes: dict[str, list[str] | None] = {}
+
+    def free(entry_id: str) -> bool:
+        if kinds.get(entry_id, LINK_NONE) == LINK_NONE:
+            return True
+        # a half-saved link back to `me` alone counts as free
+        return kinds[entry_id] == LINK_SYNCED and set(links.get(entry_id) or ()) <= {me}
+
+    if current is not None:
+        mine, theirs = current
+        if picks is None:
+            # Leaving: the rest stay a group while both sides keep someone.
+            rest = [m for m in mine if m != me]
+            changes[me] = None
+            for t in theirs:
+                changes[t] = rest or None
+            for m in rest:
+                changes[m] = theirs
+            return changes, None
+    else:
+        mine, theirs = [me], []
+        if picks is None:
+            return {me: None}, None
+
+    picks = sorted(set(picks))
+    if not picks or me in picks:
+        return {}, "link_entry_missing"
+    if current is not None:
+        for p in picks:
+            if p in mine:
+                return {}, "link_entry_same_side"
+            if p not in theirs and not free(p):
+                return {}, "link_entry_taken"  # in another group, or linked to something else
+        other = picks
+        for t in theirs:
+            if t not in other:
+                changes[t] = None  # no longer picked
+    else:
+        joined: tuple[list[str], list[str]] | None = None
+        for p in picks:
+            if free(p):
+                continue
+            group = sides_of(p, links)
+            if group is None:
+                return {}, "link_entry_taken"  # linked to something else
+            if joined is not None and set(group[0]) | set(group[1]) != set(joined[0]) | set(joined[1]):
+                return {}, "link_entry_taken"  # two groups never merge
+            if joined is not None and set(group[0]) != set(joined[0]):
+                return {}, "link_entry_both_sides"
+            joined = group
+        other = sorted({*picks, *(joined[0] if joined else ())})
+        mine = sorted({me, *(joined[1] if joined else ())})
+    if len(mine) + len(other) > MAX_GROUP:
+        return {}, "group_too_big"
+    for m in mine:
+        changes[m] = list(other)
+    for o in other:
+        changes[o] = list(mine)
+    return changes, None
 
 
 def _link_data(user_input: dict[str, Any]) -> dict[str, Any]:
-    """What to store: the type, and only the fans (or the synced recuperator and rule) that type uses."""
+    """What to store: the type, and only the fans (or the sync rule) that type uses.
+
+    The synced recuperators are stored by _save_link, from the plan.
+    """
     link_type = user_input[CONF_LINK_TYPE]
     data: dict[str, Any] = {CONF_LINK_TYPE: link_type}
     for key in LINK_NEEDS[link_type]:
         data[key] = user_input[key]
     if link_type == LINK_SYNCED:
-        data[CONF_LINK_ENTRY] = user_input[CONF_LINK_ENTRY]
         data[CONF_SYNC_RULE] = user_input.get(CONF_SYNC_RULE, SYNC_EITHER)
     return data
+
+
+def _synced_link(others: list[str], rule: str) -> dict[str, Any]:
+    """A synced link as stored: the other side, its first unit (all 0.5 reads), and the rule."""
+    return {CONF_LINK_TYPE: LINK_SYNCED, CONF_LINK_ENTRY: others[0], CONF_LINK_ENTRIES: list(others), CONF_SYNC_RULE: rule}
 
 
 def _set_link(hass, entry, link: dict[str, Any]) -> None:
@@ -425,30 +543,46 @@ def _set_link(hass, entry, link: dict[str, Any]) -> None:
     )
 
 
-def _save_link(hass, entry, link: dict[str, Any]) -> None:
+def _save_link(hass, entry, link: dict[str, Any], changes: dict[str, list[str] | None]) -> None:
     """Store a new link on this entry, and on the synced recuperators it joins or leaves.
 
-    Both ends of a synced pair point at each other, with the sync rule mirrored.
-    A recuperator left behind is unlinked. Only the entries whose link changed
+    Every member of a synced group stores the units on its other side, and the
+    sync rule (mirrored on the other end of a pair, for the lead rules). A
+    recuperator left behind is unlinked. Only the entries whose link changed
     restart; a new sync rule alone applies at once.
     """
-    old = {CONF_LINK_TYPE: LINK_NONE, **{k: entry.data[k] for k in LINK_KEYS if k in entry.data}}
-    old_partner, new_partner = _synced_to(entry), link.get(CONF_LINK_ENTRY)
+    rule = link.get(CONF_SYNC_RULE, SYNC_EITHER)
+    restart: set[str] = set()
+    for entry_id, others in changes.items():
+        if entry_id == entry.entry_id:
+            continue
+        other = hass.config_entries.async_get_entry(entry_id)
+        if other is None:
+            continue
+        # Units left behind keep their own rule; units this one links to take its rule.
+        keep = link[CONF_LINK_TYPE] != LINK_SYNCED
+        their_rule = other.data.get(CONF_SYNC_RULE, SYNC_EITHER) if keep else mirror(rule)
+        new = _synced_link(others, their_rule) if others else {CONF_LINK_TYPE: LINK_NONE}
+        if _link_of(other.data) != _link_of(new):
+            restart.add(entry_id)
+        _set_link(hass, other, new)
+    if link[CONF_LINK_TYPE] == LINK_SYNCED:
+        link = _synced_link(changes[entry.entry_id] or [], rule)
+    if _link_of(entry.data) != _link_of(link):
+        restart.add(entry.entry_id)
     _set_link(hass, entry, link)
-    restart = {entry.entry_id} if {**old, CONF_SYNC_RULE: None} != {**link, CONF_SYNC_RULE: None} else set()
-    if old_partner and old_partner != new_partner and (other := hass.config_entries.async_get_entry(old_partner)):
-        if _synced_to(other) == entry.entry_id:
-            _set_link(hass, other, {CONF_LINK_TYPE: LINK_NONE})
-            restart.add(other.entry_id)
-    if new_partner and (other := hass.config_entries.async_get_entry(new_partner)):
-        restart |= {other.entry_id} if _synced_to(other) != entry.entry_id else set()
-        _set_link(hass, other, {
-            CONF_LINK_TYPE: LINK_SYNCED,
-            CONF_LINK_ENTRY: entry.entry_id,
-            CONF_SYNC_RULE: mirror(link[CONF_SYNC_RULE]),
-        })
     for entry_id in restart:
         hass.config_entries.async_schedule_reload(entry_id)
+
+
+def _link_of(data: Mapping[str, Any]) -> tuple:
+    """A link without its sync rule: changing only the rule needs no restart."""
+    return (
+        data.get(CONF_LINK_TYPE, LINK_NONE),
+        data.get(CONF_LINK_EXHAUST_SWITCH),
+        data.get(CONF_LINK_INTAKE_SWITCH),
+        tuple(link_entries_of(data)),
+    )
 
 
 # -- the Room and outdoor sensors page ------------------------------------------------

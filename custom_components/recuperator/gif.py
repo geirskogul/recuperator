@@ -48,6 +48,7 @@ from .replay import (
     _runs,
     chart_scale,
     header_texts,
+    replay_panels,
     time_format,
 )
 
@@ -269,17 +270,19 @@ def render_replay_gif(
     unit: str = "°C",
     linked: list[Frame] | None = None,
     linked_title: str = "",
+    others: list[tuple[list[Frame], str]] | None = None,
 ) -> bytes:
-    """The replay (and a synced recuperator's panel under it) as a looping GIF of up to MAX_FRAMES frames."""
-    if len(frames) < 2:
-        raise ValueError("at least two frames are needed")
-    if linked is not None and len(linked) != len(frames):
-        raise ValueError("the linked unit needs one frame per frame")
+    """The replay (and synced recuperators' panels under it) as a looping GIF.
+
+    Up to MAX_FRAMES frames for one or two panels; with more panels, fewer, so
+    the file stays about the size of a pair's.
+    """
+    drawn = replay_panels(frames, title, others, linked, linked_title)
     count = gif_frame_count(len(frames), playback_seconds)
+    if len(drawn) > 2:
+        count = max(2, min(count, MAX_FRAMES * 2 // len(drawn)))
     picks = [round(k * (len(frames) - 1) / (count - 1)) for k in range(count)]
-    panels = [([frames[i] for i in picks], title or "Replay")]
-    if linked:
-        panels.append(([linked[i] for i in picks], linked_title or "Synced recuperator"))
+    panels = [([unit_frames[i] for i in picks], name) for unit_frames, name in drawn]
     # The graph is drawn from the picked frames too, so the dots stay on its lines.
     fmt = time_format(frames)
     scale = chart_scale([p[0] for p in panels], unit)

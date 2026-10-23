@@ -33,7 +33,7 @@ async def async_setup_entry(hass: HomeAssistant, entry, async_add_entities: AddE
         OptionSwitch(c, entry, CONF_DIAGRAM_AIRFLOW, "mdi:weather-windy"),
         OptionSwitch(c, entry, CONF_REPLAY_GIF, "mdi:file-gif-box", REPLAY_DEVICE),
     ]
-    # Drawing the synced recuperator too only makes sense while there is one.
+    # Drawing the synced recuperators too only makes sense while there are some.
     if c.link_entry_id:
         switches.append(OptionSwitch(c, entry, CONF_REPLAY_LINKED, "mdi:link-variant", REPLAY_DEVICE))
     elif entity_id := er.async_get(hass).async_get_entity_id("switch", DOMAIN, f"{entry.entry_id}_{CONF_REPLAY_LINKED}"):

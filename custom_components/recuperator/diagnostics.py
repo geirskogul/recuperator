@@ -64,6 +64,19 @@ def _logic_state(logic) -> dict[str, Any]:
     }
 
 
+def _group(controller) -> dict[str, Any] | None:
+    """Who breathes in the synced group now, and who steps it."""
+    group = controller.group()
+    if group is None:
+        return None
+    leading, other = group
+    return {
+        "leader": leading[0].entry.title,
+        "leading_side": [c.entry.title for c in leading],
+        "other_side": [c.entry.title for c in other],
+    }
+
+
 async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry) -> dict[str, Any]:
     """Diagnostics for one recuperator."""
     controller = entry.runtime_data
@@ -86,7 +99,10 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry) -> dict
             "link_type": controller.link_type,
             "linked_state": controller.linked_state(),
             "sync_rule": controller.sync_rule if controller.link_entry_id else None,
-            "synced": controller.synced() is not None,
+            "link_entries": controller.link_entries,
+            "sides": controller.sides(),
+            "group": _group(controller),
+            "synced": controller.synced(),
             "resting": controller.resting(),
             "wanted_fans": controller.wanted_fans(),
         },

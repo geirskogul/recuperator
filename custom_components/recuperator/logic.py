@@ -140,7 +140,7 @@ class BreathingLogic:
         # Passive intake: the intake phase runs with the intake fan off.
         self.passive: bool = False  # the running (or last) intake is passive
         # Something exhausts while this unit takes air in: a linked unit's exhaust fan,
-        # or a synced recuperator (set by the controller). A passive intake is then
+        # or a synced group's other side (set by the controller). A passive intake is then
         # pulled in by it, and counts as an ordinary intake whose fan stays off.
         # Without it the room refills on its own, which can take long and says
         # nothing about how much air came in.
@@ -151,8 +151,8 @@ class BreathingLogic:
         # What the phase limit and drying measure against, per phase (see _phase_limit).
         self._measure: dict[str, float | None] = {PHASE_EXHAUST: None, PHASE_INTAKE: None}
         self._after_limit = False  # the phase before the running one was cut short by a limit
-        # Resting in a synced pair: paused, both fans off, while the other unit
-        # finishes its phase (set by sync.step_pair, cleared when a phase begins).
+        # Resting in a synced group: paused, both fans off, while the other units
+        # finish their phases (set by sync.step_sides, cleared when a phase begins).
         self.resting = False
         self.passive_flow: bool | None = None  # inflow seen during the running/last passive intake
         self.passive_flow_after_seconds: float | None = None
@@ -166,8 +166,9 @@ class BreathingLogic:
         # The optional room and outdoor sensors (set by the controller each tick).
         self.ambient: Ambient = Ambient()
         self.drying: Drying = DRYING_IDLE
-        # A synced recuperator's drying lean, which applies to this unit's intakes too
-        # while the two breathe as a pair (set by sync.step_pair; cleared when alone).
+        # The strongest drying lean among the rest of a synced group, which applies to
+        # this unit's intakes too while they breathe together (set by
+        # sync.step_sides; cleared when alone).
         self.partner_intake_share: float | None = None
         # Heat recovery: the supply air (inside probe) averaged over each intake.
         self._efficiencies: deque[float] = deque(maxlen=EFFICIENCY_BREATHS)
@@ -368,7 +369,7 @@ class BreathingLogic:
             self._maybe_leave_pause(now, mode, s, inside, outside)
         return True
 
-    # -- driven from outside, by a synced pair (see sync.py) ----------------------
+    # -- driven from outside, by a synced group (see sync.py) ---------------------
 
     def pending_reason(self, now: float, mode: str, s: Settings, inside, outside) -> str | None:
         """Why the running exhaust or intake would end now (None: not yet), without ending it."""
@@ -599,7 +600,7 @@ class BreathingLogic:
         the same reason it skips the exhaust after an intake that drying or the
         phase limit cut short: a limit never measures against a limited phase.
 
-        In a synced pair, the other unit's drying lean counts as well.
+        In a synced group, the other units' strongest drying lean counts as well.
         """
         shares: list[tuple[float, str]] = []
         if self.phase == PHASE_INTAKE and not refill:

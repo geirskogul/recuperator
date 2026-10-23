@@ -1,20 +1,23 @@
-"""A simulated hour of two synced recuperators, driven by the integration's own cycle logic.
+"""A simulated hour of synced recuperators, driven by the integration's own cycle logic.
 
 Each unit gets a small physics model: a ceramic core in slices that stores and
 returns heat, a hose on the outdoor side whose air comes back first on every
 intake, and two DS18B20-like probes (lagging, 1/16 °C steps, a reading every
-2 s). Their readings feed BreathingLogic and sync.step_pair exactly as the
+2 s). Their readings feed BreathingLogic and sync.step_sides exactly as the
 controller does, once a second, so every switch in the result is one the
-integration would have made.
+integration would have made. A pair by default; a group with --units.
 
 Home Assistant does not need to be installed: the pure modules are loaded on
 their own, with a stand-in for the two names they import from homeassistant.const.
 
     python tools/pair_sim.py            # prints every switch and the cycle lengths
+    python tools/pair_sim.py --units big,small,small --rule both
+    python tools/pair_sim.py --units small,small,small,small --off 0@1800
 """
 
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass, field
 from datetime import datetime
 import enum
@@ -265,11 +268,12 @@ class Run:
 
     start: datetime
     weather: Weather
-    names: tuple[str, str]
+    names: tuple[str, ...]
     times: list[float] = field(default_factory=list)
     room: list[float] = field(default_factory=list)
     outdoor: list[float] = field(default_factory=list)
-    samples: tuple[list[UnitSample], list[UnitSample]] = field(default_factory=lambda: ([], []))
+    samples: tuple[list[UnitSample], ...] = ()
+    net_flow: list[float] = field(default_factory=list)  # W/K blown out (+) or in (-) by the whole group
     switches: list[Switch] = field(default_factory=list)
     exhaust_starts: list[float] = field(default_factory=list)  # the first unit's, warm-up included
 
@@ -284,12 +288,19 @@ def default_settings() -> logic_mod.Settings:
     return logic_mod.Settings.from_mapping({"max_phase_seconds": 300, "pause_seconds": 5})
 
 
+def make_units(
+    weather: Weather, specs: tuple[CoreSpec, ...], names: tuple[str, ...], start: float
+) -> tuple[Recuperator, ...]:
+    """Units whose cores start between the room and the outdoor temperature."""
+    room, outdoor = weather.room_at(start), weather.outdoor_at(start)
+    return tuple(Recuperator(name, Core(spec, room, outdoor), default_settings()) for name, spec in zip(names, specs))
+
+
 def make_pair(
     weather: Weather, specs: tuple[CoreSpec, CoreSpec], names: tuple[str, str], start: float
 ) -> tuple[Recuperator, Recuperator]:
     """Two units whose cores start between the room and the outdoor temperature."""
-    room, outdoor = weather.room_at(start), weather.outdoor_at(start)
-    a, b = (Recuperator(name, Core(spec, room, outdoor), default_settings()) for name, spec in zip(names, specs))
+    a, b = make_units(weather, specs, names, start)
     return a, b
 
 
@@ -318,7 +329,7 @@ def _sample(unit: Recuperator, now: float) -> UnitSample:
     )
 
 
-def _note_switches(run: Run, now: float, pair: tuple[Recuperator, Recuperator], before: list[tuple]) -> None:
+def _note_switches(run: Run, now: float, pair: tuple[Recuperator, ...], before: list[tuple]) -> None:
     t = now - run.start.timestamp()
     for unit, (phase, started) in zip(pair, before):
         if unit.logic.phase != phase and phase in (const.PHASE_EXHAUST, const.PHASE_INTAKE):
@@ -333,19 +344,29 @@ def simulate(
     warmup: float = 7200.0,
     start: datetime = datetime(2026, 10, 10, 18, 0),
     seed: int = 7,
+    sides: tuple[list[int], list[int]] | None = None,
+    off: dict[int, float] | None = None,
 ) -> Run:
-    """Breathe the pair from `warmup` seconds before the hour, and record the hour itself."""
+    """Breathe the group from `warmup` seconds before the hour, and record the hour itself.
+
+    `sides` lists the units (by index) on each side, the first unit against the
+    rest by default; `off` switches units off at the given second of the hour.
+    """
     rng = random.Random(seed)
-    pair = make_pair(weather, specs, names, -warmup)
+    units = make_units(weather, specs, names, -warmup)
+    sides = sides or ([0], list(range(1, len(units))))
     epoch = start.timestamp()
-    run = Run(start, weather, names)
+    run = Run(start, weather, tuple(names), samples=tuple([] for _ in units))
     for second in range(-int(warmup), int(weather.hour) + 1):
-        _tick(run, pair, rule, epoch, second, rng)
+        _tick(run, units, sides, rule, epoch, second, rng, off or {})
     return run
 
 
-def _tick(run: Run, pair: tuple[Recuperator, Recuperator], rule: str, epoch: float, second: int, rng: random.Random) -> None:
-    """One second: the physics, the probes' reports, then the pair's step (as the controller's tick)."""
+def _tick(
+    run: Run, pair: tuple[Recuperator, ...], sides, rule: str, epoch: float, second: int, rng: random.Random,
+    off: dict[int, float],
+) -> None:
+    """One second: the physics, the probes' reports, then the group's step (as the controller's tick)."""
     t, now = float(second), epoch + second
     room, outdoor = run.weather.room_at(t), run.weather.outdoor_at(t)
     for unit in pair:
@@ -353,7 +374,10 @@ def _tick(run: Run, pair: tuple[Recuperator, Recuperator], rule: str, epoch: flo
         if second % PROBE_EVERY == 0:
             unit.report_probes(now, rng)
     before = [(u.logic.phase, u.logic.phase_started or now) for u in pair]
-    _breathe(pair, rule, now)
+    for index, when in off.items():
+        if t >= when and pair[index].logic.phase != const.PHASE_STOPPED:
+            pair[index].logic.stop()
+    _breathe(pair, sides, rule, now, {i for i, when in off.items() if t >= when})
     if pair[0].logic.phase == const.PHASE_EXHAUST and before[0][0] != const.PHASE_EXHAUST:
         run.exhaust_starts.append(t)
     if t >= 0:
@@ -363,14 +387,31 @@ def _tick(run: Run, pair: tuple[Recuperator, Recuperator], rule: str, epoch: flo
         run.outdoor.append(outdoor)
         for samples, unit in zip(run.samples, pair):
             samples.append(_sample(unit, now))
+        run.net_flow.append(sum(u.direction() * u.core.spec.flow for u in pair))
 
 
-def _breathe(pair: tuple[Recuperator, Recuperator], rule: str, now: float) -> None:
-    a, b = pair
-    for unit in pair:
-        if unit.logic.phase == const.PHASE_STOPPED:
+def _breathe(pair: tuple[Recuperator, ...], sides, rule: str, now: float, off: set[int] = frozenset()) -> None:
+    """Step the group as the controller does: the units still on, a whole side out making the rest pair up."""
+    for index, unit in enumerate(pair):
+        if unit.logic.phase == const.PHASE_STOPPED and index not in off:
             unit.logic.start(now, unit.mode, unit.settings, unit.inside, unit.outside)
-    sync_mod.step_pair(now, a.unit(), b.unit(), rule)
+    a, b = ([i for i in side if i not in off] for side in sides)
+    if not a or not b:
+        alone = sorted(a or b)
+        a, b = alone[0::2], alone[1::2]
+    if not a or not b:
+        for i in (*a, *b):
+            pair[i].logic.step(now, pair[i].mode, pair[i].settings, pair[i].inside, pair[i].outside)
+        return
+    if b[0] < a[0]:
+        a, b = b, a
+    units = {i: pair[i].unit() for i in (*a, *b)}
+    lead = None
+    if rule in sync_mod.LEAD_RULES and len(a) == len(b) == 1:
+        lead = units[a[0]] if rule == const.SYNC_LEAD_THIS else units[b[0]]
+    for i in (*a, *b):
+        pair[i].logic.assisted = True
+    sync_mod.step_sides(now, [units[i] for i in a], [units[i] for i in b], rule, lead)
 
 
 # -- a summary on the terminal ----------------------------------------------------------------
@@ -409,8 +450,46 @@ def summary(run: Run) -> str:
     for name, samples in zip(run.names, run.samples):
         hr = samples[-1].heat_recovery
         lines.append(f"{name}: heat recovery {hr:.0f} %" if hr is not None else f"{name}: heat recovery unknown")
+    if len(run.names) > 2:
+        lines.append(balance(run))
     return "\n".join(lines)
 
 
+M3H_PER_W_K = 3600 / 1206  # m³/h of air that carries 1 W/K (air at about 1.2 kg/m³, 1005 J/kg K)
+
+
+def balance(run: Run) -> str:
+    """How far the group was from moving as much air in as out, on average and how often."""
+    net = np.abs(np.array(run.net_flow)) * M3H_PER_W_K
+    unbalanced = float(np.mean(net > 0.5))
+    return f"balance: mean |net| {net.mean():.1f} m³/h, out of balance {unbalanced:.0%} of the time"
+
+
+UNIT_SPECS = {
+    "small": CoreSpec(),
+    "small2": CoreSpec(capacity=4000.0, flow=8.4, duct_seconds=35.0),
+    "big": CoreSpec(capacity=8400.0, flow=17.4, ntu=12.0, cells=36, duct_seconds=30.0),
+}
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--units", help="comma-separated: small, small2 or big (default: a pair of small units)")
+    parser.add_argument("--sides", help="unit indexes per side, e.g. 0|1,2 (default: the first unit against the rest)")
+    parser.add_argument("--rule", default=const.SYNC_EITHER, choices=const.SYNC_RULES)
+    parser.add_argument("--off", action="append", default=[], help="IDX@SECONDS: switch unit IDX off at that second of the hour")
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    print(summary(simulate()))
+    args = _parse_args()
+    if not args.units and not args.off and not args.sides and args.rule == const.SYNC_EITHER:
+        print(summary(simulate()))
+    else:
+        kinds = (args.units or "small,small2").split(",")
+        names = tuple(f"{i}: {kind}" for i, kind in enumerate(kinds))
+        sides = None
+        if args.sides:
+            sides = tuple([int(i) for i in part.split(",")] for part in args.sides.split("|"))
+        off = {int(i): float(t) for i, t in (item.split("@") for item in args.off)}
+        print(summary(simulate(specs=tuple(UNIT_SPECS[k] for k in kinds), names=names, rule=args.rule, sides=sides, off=off)))
