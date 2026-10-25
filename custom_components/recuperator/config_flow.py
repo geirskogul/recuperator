@@ -16,6 +16,7 @@ from homeassistant.helpers import selector
 from .diagram import PALETTE, palette_to_text
 from .const import (
     AMBIENT_KEYS,
+    CONF_CO2_VENT,
     CONF_DRYING,
     CONF_DRYING_EXHAUST_ONLY,
     CONF_EXHAUST_SWITCH,
@@ -635,8 +636,9 @@ SETTINGS_SECTIONS: tuple[tuple[str, tuple[str, ...], bool], ...] = (
         False,
     ),
     ("passive", (CONF_PASSIVE_INTAKE, "passive_intake_max_seconds", "passive_flow_delta"), False),
+    ("co2_vent", (CONF_CO2_VENT, "co2_vent_overlap_percent", "co2_vent_overlap_seconds"), False),
 )
-ON_OFF = (CONF_PASSIVE_INTAKE, CONF_DRYING, CONF_DRYING_EXHAUST_ONLY)
+ON_OFF = (CONF_PASSIVE_INTAKE, CONF_DRYING, CONF_DRYING_EXHAUST_ONLY, CONF_CO2_VENT)
 
 
 def _active_sections(current: dict[str, Any], mode: str) -> set[str]:
@@ -650,6 +652,8 @@ def _active_sections(current: dict[str, Any], mode: str) -> set[str]:
         active.add("drying")
     if current.get(CONF_PASSIVE_INTAKE):
         active.add("passive")
+    if current.get(CONF_CO2_VENT):
+        active.add("co2_vent")
     return active
 
 

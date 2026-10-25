@@ -31,6 +31,15 @@ to a unit whose own drying stood down to protect its room.
 
 The units leave the pause together, once all of their pauses have run out
 (a resting unit's pause started earlier).
+
+CO2 vent mode (a unit's own setting) overlaps the exhausts, so one unit is
+always exhausting: when the group switches, a unit in it whose exhaust is
+ending keeps exhausting for its overlap while the other side starts its
+exhaust. Then it pauses and starts its intake on its own, late. That intake
+holds the group for at least its Minimum phase (the relays' floor), and does
+not count as a measure for the limits. While any unit overlaps, the group
+does not switch. Drying in CO2 vent mode lengthens the overlap instead of
+resting the units taking air in (see BreathingLogic.co2_vent_overlap).
 """
 
 from __future__ import annotations
@@ -48,6 +57,7 @@ from .const import (
     PHASE_EXHAUST,
     PHASE_INTAKE,
     PHASE_PAUSE,
+    REASON_CO2_VENT,
     REASON_COLD_LIMIT,
     REASON_DRYING,
     REASON_MAX_TIME,
@@ -132,8 +142,21 @@ def sides_of(me: str, links: Mapping[str, Sequence[str]]) -> tuple[list[str], li
 # -- stepping the group ------------------------------------------------------------------
 
 
-def _way(logic: BreathingLogic) -> str | None:
-    """Which way this unit's side breathes now: its running phase, or the other side's opposite while it rests."""
+def _overlapping(logic: BreathingLogic) -> bool:
+    """Is this unit still finishing a CO2 vent overlap: exhausting on, or paused before its late intake?"""
+    return logic.overlap_until is not None or logic.joining
+
+
+def _way(logic: BreathingLogic, overlap: bool = False) -> str | None:
+    """Which way this unit's side breathes now: its running phase, or the other side's opposite while it rests.
+
+    While some unit overlaps, the group has just switched: an overlapping
+    exhaust's side takes air in, and a pause is before its side's new phase.
+    """
+    if overlap:
+        if logic.overlap_until is not None:
+            return opposite(logic.phase)
+        return logic.next_phase if logic.phase == PHASE_PAUSE else logic.phase
     if logic.phase in _ACTIVE:
         return logic.phase
     if logic.phase == PHASE_PAUSE and logic.resting and logic.next_phase is not None:
@@ -150,12 +173,13 @@ def aligned_sides(side_a: Sequence[BreathingLogic], side_b: Sequence[BreathingLo
     resting while anyone runs.
     """
     units = [*side_a, *side_b]
-    if not any(u.phase in _ACTIVE for u in units):
+    overlap = any(_overlapping(u) for u in units)
+    if not overlap and not any(u.phase in _ACTIVE for u in units):
         if any(u.phase != PHASE_PAUSE for u in units):
             return False
         ways_a, ways_b = {u.next_phase for u in side_a}, {u.next_phase for u in side_b}
     else:
-        ways_a, ways_b = {_way(u) for u in side_a}, {_way(u) for u in side_b}
+        ways_a, ways_b = {_way(u, overlap) for u in side_a}, {_way(u, overlap) for u in side_b}
     if len(ways_a) != 1 or len(ways_b) != 1 or None in ways_a:
         return False
     return ways_b == {opposite(next(iter(ways_a)))}
@@ -207,6 +231,7 @@ def step_sides(
     units = [*side_a, *side_b]
     # One drying decision for the group: each unit's intakes follow the others' leans too.
     for u in units:
+        u.logic.grouped = True
         u.logic.partner_intake_share = group_lean(u.logic, [o.logic for o in units if o is not u])
     if not aligned_sides([u.logic for u in side_a], [u.logic for u in side_b]):
         # Pairing up (just synced, or a unit just started): all pause, then the
@@ -217,6 +242,9 @@ def step_sides(
             for u in side:
                 u.logic.switch(now, REASON_SYNCED, u.inside, u.outside, way)
         return True
+
+    if any(_overlapping(u.logic) for u in units):
+        return _overlap_step(now, units)
 
     running = [u for u in units if u.logic.phase in _ACTIVE]
     if not running:
@@ -237,7 +265,9 @@ def step_sides(
         if rule in LEAD_RULES:
             rule = SYNC_EITHER
 
-    if _should_switch(now, rule, running, reasons, lead):
+    # An intake that started late, after an overlap, runs at least its Minimum phase.
+    young = any(u.logic.late and now - u.logic.phase_started < u.settings.min_phase_seconds for u in running)
+    if not young and _should_switch(now, rule, running, reasons, lead):
         if lead is not None:
             for u in running:
                 # A reason that did not count (a follower's, under a lead rule) is not
@@ -274,13 +304,40 @@ def _pulls_passive_intake(unit: Unit, units: Sequence[Unit]) -> bool:
 
 
 def _switch(now: float, units: Sequence[Unit], reasons: Mapping[int, str | None]) -> None:
-    """Switch the group: each running unit ends its phase, and a resting one keeps its next phase."""
+    """Switch the group: each running unit ends its phase, and a resting one keeps its next phase.
+
+    In CO2 vent mode an exhaust keeps going for its overlap instead.
+    """
     for u in units:
         logic = u.logic
         if logic.phase in _ACTIVE:
+            overlap = logic.co2_vent_overlap(now, u.settings)
+            if overlap > 0:
+                logic.overlap_until = now + overlap
+                continue
             reason = reasons.get(id(u)) or REASON_SYNCED
             logic.switch(now, reason, u.inside, u.outside, opposite(logic.phase))
-    _leave_pause(now, units)  # at once, when all pauses are zero
+    _leave_pause(now, [u for u in units if not _overlapping(u.logic)])  # at once, when all pauses are zero
+
+
+def _overlap_step(now: float, units: Sequence[Unit]) -> bool:
+    """While exhausts overlap: each overlap ends on time, then its unit starts its intake after its own pause."""
+    changed = False
+    for u in units:
+        logic = u.logic
+        if logic.overlap_until is not None and now >= logic.overlap_until:
+            logic.switch(now, REASON_CO2_VENT, u.inside, u.outside, PHASE_INTAKE)
+            logic.joining = True
+            changed = True
+        if logic.joining and logic.pause_over(now, u.settings):
+            logic.begin_next(now, u.mode, u.settings, u.inside, u.outside)
+            logic.late = True
+            changed = True
+    # The other side, paused since the switch, starts together.
+    paused = [u for u in units if u.logic.phase == PHASE_PAUSE and not _overlapping(u.logic)]
+    if paused and _leave_pause(now, paused):
+        changed = True
+    return changed
 
 
 def _leave_pause(now: float, units: Sequence[Unit]) -> bool:
@@ -296,12 +353,21 @@ def _should_switch(
     now: float, rule: str, running: Sequence[Unit], reasons: Mapping[int, str | None], lead: Unit | None
 ) -> bool:
     """Does the sync rule switch the group, given why each running unit's phase would end (None: not yet)?"""
+    if lead is not None and lead.logic.late and len(running) > 1:
+        lead = None  # a lead whose intake started late, after an overlap, does not decide: the other does
     if lead is not None:
         reason = reasons.get(id(lead))
         return reason is not None and reason not in EARLY
     found = [reasons[id(u)] for u in running]
     if any(r in HARD for r in found):
         return True
+    late = {id(u) for u in running if u.logic.late}
+    if late and len(late) < len(running):
+        # An intake that started late, after an overlap, neither holds the others up
+        # nor ends their phases (once past its Minimum phase): the units that started
+        # on time decide. Its Maximum phase still counts, and a protection still rests it.
+        found = [r for u, r in zip(running, found) if id(u) not in late]
+        running = [u for u in running if id(u) not in late]
     if rule == SYNC_BOTH:
         return all(r is not None for r in found)
     if all(r in EARLY for r in found):

@@ -108,7 +108,7 @@ async def test_settings_are_grouped_in_sections(hass: HomeAssistant, entry) -> N
     assert len(grouped) == len(set(grouped))
     numbers = {s.key for s in SETTINGS if s.key not in REPLAY_KEYS}
     assert numbers <= set(grouped)
-    assert set(grouped) - numbers == {"phase_limit", "drying", "drying_exhaust_only", "passive_intake"}
+    assert set(grouped) - numbers == {"phase_limit", "drying", "drying_exhaust_only", "passive_intake", "co2_vent"}
 
     result = await _open_options(hass, entry, "settings")
     collapsed = _collapsed(result)

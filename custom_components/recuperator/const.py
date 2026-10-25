@@ -32,6 +32,7 @@ CONF_PALETTE = "diagram_palette"  # the diagram's colour scale, as text (see dia
 CONF_PHASE_LIMIT = "phase_limit"  # keep one phase shorter than the other (see PHASE_LIMITS)
 CONF_DRYING = "drying"  # lean towards exhaust while the room is too humid
 CONF_DRYING_EXHAUST_ONLY = "drying_exhaust_only"  # ...and run Exhaust only when very humid
+CONF_CO2_VENT = "co2_vent"  # synced groups: an exhaust overlaps the next one (see sync.py)
 
 # Optional sensors for the room and the outdoors (Configure, Room and outdoor sensors).
 # The outdoor ones may also be a weather entity.
@@ -92,6 +93,7 @@ REASON_SUPPLY_DROP = "supply_drop"  # air entering the room fell too far below r
 REASON_SUPPLY_COLD = "supply_cold"  # air entering the room got colder than the hard floor
 REASON_PHASE_LIMIT = "phase_limit"  # the phase limit kept it shorter than the other phase
 REASON_DRYING = "drying"  # drying kept the intake shorter than the exhaust
+REASON_CO2_VENT = "co2_vent"  # CO2 vent mode: the exhaust's overlap with the next one ran out
 REASON_SYNCED = "synced"  # another synced recuperator's phase ended, and the group switched with it
 REASON_STARTED = "started"  # breathing was switched on
 REASON_STOPPED = "stopped"  # breathing was switched off
@@ -105,6 +107,7 @@ REASONS = [
     REASON_SUPPLY_COLD,
     REASON_PHASE_LIMIT,
     REASON_DRYING,
+    REASON_CO2_VENT,
     REASON_SYNCED,
     REASON_STARTED,
     REASON_STOPPED,
@@ -131,6 +134,7 @@ DRYING_STATES = [
     DRYING_ACTIVE,
     DRYING_EXHAUST_ONLY,
 ]
+CO2_VENT_MAX_PERCENT = 90.0  # overlap share with drying's lean added; at 100 % the breaths would grow without end
 DRYING_HYSTERESIS = 3.0  # % RH below the exhaust-only humidity before normal breathing resumes
 
 # -- heat recovery -------------------------------------------------------------------
@@ -202,6 +206,9 @@ SETTINGS: tuple[Setting, ...] = (
         "drying_min_room_temperature", 10, 0, 25, 0.5, C, "mdi:home-thermometer",
         temperature=True, advanced=True,
     ),
+    # CO2 vent mode (synced groups): how long an exhaust keeps going after the group switches
+    Setting("co2_vent_overlap_percent", 20, 0, 90, 1, "%", "mdi:molecule-co2"),
+    Setting("co2_vent_overlap_seconds", 0, 0, 3600, 1, "s", "mdi:timer-plus-outline"),
     # Replay: used by the Create replay button, and saved from the last Create replay action.
     Setting("replay_hours", 24, 0.25, 168, 0.25, "h", "mdi:history"),
     Setting("replay_playback_seconds", 60, 5, 900, 1, "s", "mdi:play-speed"),

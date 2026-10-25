@@ -192,7 +192,7 @@ Drying stands down, and the **Drying** sensor says why, when:
 
 The draft and frost protections still come first, and intakes a drying lean cuts short end with the reason *Drying*.
 
-**In a [synced group](#synced-recuperators),** drying is decided for the group. The strongest lean of any unit applies to every unit's intakes, so a unit without a humidity sensor of its own dries along with the others. A unit whose intake the lean cuts short rests, with both fans off, while the others finish. So the basement blows out more than it takes in through the two cores, and the breaths keep their length. A unit whose own drying stands down because its room is too cold or the outdoor air too humid doesn't take the other unit's lean. The Drying sensor's `synced_intake_share` attribute shows the other units' strongest lean when it applies.
+**In a [synced group](#synced-recuperators),** drying is decided for the group. The strongest lean of any unit applies to every unit's intakes, so a unit without a humidity sensor of its own dries along with the others. A unit whose intake the lean cuts short rests, with both fans off, while the others finish. So the basement blows out more than it takes in through the two cores, and the breaths keep their length. A unit whose own drying stands down because its room is too cold or the outdoor air too humid doesn't take the other unit's lean. The Drying sensor's `synced_intake_share` attribute shows the other units' strongest lean when it applies. In [CO2 vent mode](#co2-vent-mode), the lean lengthens the exhaust overlap instead, and nobody rests for drying.
 
 ### Phase limit
 
@@ -256,6 +256,17 @@ Changing only the sync rule applies at once, on every unit of the group; a lead 
 **Breathing** and **Mode** stay separate on each unit. A unit keeps in step only while it's breathing in *Automatic* or *Timed*. While it's off, or runs *Exhaust only* or *Intake only* (drying's included), it breathes on its own and the rest of the group carries on without it. If a whole side is out (the big unit is off, say), the units left pair up among themselves, so they stay balanced. When a unit joins again, the group pauses once and sets off opposite ways. The Phase sensor's `synced` attribute says whether a unit is in step. The *Linked unit* sensor shows what the other side is doing, and its `synced_with` and `same_side` attributes name the units on each side.
 
 Removing a recuperator takes it out of its group. A unit left without anyone on the other side is unlinked and breathes on its own.
+
+#### CO2 vent mode
+
+With **CO2 vent mode** on, a synced group's exhausts overlap, so one unit is always exhausting. Stale air and CO2 keep leaving the house the whole time, and the house sits at a slight negative pressure. When the group switches, a unit whose exhaust is ending keeps exhausting for the overlap while the other side starts its own exhaust. Then it pauses and starts its intake, late.
+
+- **How long the overlap is.** The larger of **CO2 vent overlap** (20 %, a share of the exhaust that's ending) and **CO2 vent overlap minimum** (0 s). With 1600 s *Timed* breaths at 20 %, each exhaust runs 1920 s, each intake 1280 s, and the two units exhaust together for 320 s of every 1600 s.
+- **Drying lengthens the overlap.** With [Drying](#drying) on, its lean adds to the share: an intake share of 60 % adds 40 %. The unit taking air in no longer rests for drying, so its fans never sit idle for it. A unit whose own drying stands down to protect its room doesn't add the lean. The share stops at 90 % in all.
+- **The late intake.** It runs at least *Minimum phase*, so the relays keep their floor. It never holds up or ends the other units' phases: the units that started on time decide when the group switches, and under a lead rule a late lead hands the decision to the other unit. Draft protection and the cold limit still rest it as usual. The limits don't measure against it, so the breaths can't shrink.
+- **What the sensors show.** While a unit overlaps, the Phase sensor's `co2_vent_overlap` attribute is true. An exhaust the overlap ended has the reason *CO2 vent overlap done*.
+
+The setting is each unit's own: only a unit with it on overlaps. Breathing alone, it does nothing. Long overlaps stretch the breaths a little. The late intake's *Minimum phase* is added on top, so at 90 % with a 300 s *Minimum phase* a period settles at about 3000 s, but it never grows past that.
 
 ## Watching it breathe
 
@@ -349,6 +360,8 @@ The replay has its own small **Replay** device, listed under *Connected devices*
 - **Reporting a bug.** Download the diagnostics from the integration's menu and attach them to an [issue](https://github.com/geirskogul/recuperator/issues).
 
 ## Recent changes
+
+- **0.7.0.** [CO2 vent mode](#co2-vent-mode) for synced groups: the exhausts overlap by a share of the exhaust or a number of seconds, whichever is longer, so one unit is always exhausting. Drying in this mode lengthens the overlap instead of resting the unit taking air in.
 
 - **0.6.0.** Synced groups: up to four recuperators breathing as one.
   - **One big unit against two small ones, or two against two.** On **Linked unit**, *Synced recuperators* now takes several units. Each keeps its own probes, draft protection, settings and rests. See [Synced recuperators](#synced-recuperators).

@@ -155,11 +155,11 @@
               "drying_min_room_temperature": "Drying room minimum"
             },
             "data_description": {
-              "drying": "Lean towards exhaust while the room is more humid than the target humidity. Needs a room humidity sensor (Configure, Room and outdoor sensors). In a synced group, the strongest lean of any unit applies to all of them, unless a unit's own drying stood down to protect its room.",
+              "drying": "Lean towards exhaust while the room is more humid than the target humidity. Needs a room humidity sensor (Configure, Room and outdoor sensors). In a synced group, the strongest lean of any unit applies to all of them, unless a unit's own drying stood down to protect its room. In CO2 vent mode, a synced unit's exhaust overlaps the next one for longer instead.",
               "drying_exhaust_only": "Let drying switch to Exhaust only when the room is very humid (Exhaust-only humidity).",
               "target_humidity": "With Drying on: above this room humidity, breathing leans towards exhaust.",
               "drying_band": "How far above the target humidity drying reaches its strongest lean (the drying intake share).",
-              "drying_min_intake_share": "The shortest intakes get while drying, as a share of the exhaust before them.",
+              "drying_min_intake_share": "The shortest intakes get while drying, as a share of the exhaust before them. In CO2 vent mode, the lean lengthens the overlap instead (see CO2 vent overlap).",
               "drying_exhaust_only_humidity": "With 'Drying may run exhaust only' on: at or above this room humidity, run Exhaust only until the room is 3 % below it again.",
               "drying_min_room_temperature": "Drying stands down while the room is colder than this, so it never chills the room in winter."
             }
@@ -176,6 +176,20 @@
               "passive_intake": "Intake phases run with the intake fan off: after each exhaust, the room refills on its own through the core, for up to the passive intake maximum. The exhaust fan works as usual. Passive inflow shows whether air really came in.",
               "passive_intake_max_seconds": "With passive intake on, the longest an intake phase may last (it can end sooner by the usual rules: recovery target, settled, supply drop, cold limits).",
               "passive_flow_delta": "During a passive intake, the inside probe moving this much towards the outdoor temperature counts as air flowing in."
+            }
+          },
+          "co2_vent": {
+            "name": "CO2 vent mode",
+            "description": "Synced groups only: overlap the exhausts, so one unit is always exhausting.",
+            "data": {
+              "co2_vent": "CO2 vent mode",
+              "co2_vent_overlap_percent": "CO2 vent overlap",
+              "co2_vent_overlap_seconds": "CO2 vent overlap minimum"
+            },
+            "data_description": {
+              "co2_vent": "In a synced group: when the group switches, this unit's exhaust keeps going for the overlap while the other side starts its exhaust, so both exhaust together for a while and one unit is always exhausting. Then this unit pauses and starts its intake, late: that intake runs at least the Minimum phase, never holds up or ends the other units' phases, and is not used as a measure by the limits. With Drying on, drying lengthens the overlap instead of resting the units taking air in. Breathing alone, it has no effect.",
+              "co2_vent_overlap_percent": "How long the overlap is, as a share of the exhaust that is ending (20 % of a 1600 s exhaust: 320 s). Drying adds its lean: an intake share of 60 % adds 40 %. At most 90 % in all, so the breaths cannot grow without end.",
+              "co2_vent_overlap_seconds": "The shortest overlap, in seconds. The overlap is the larger of this and the CO2 vent overlap share; 0 uses the share alone."
             }
           }
         }
@@ -323,6 +337,9 @@
       },
       "diagram_airflow": {
         "name": "Diagram airflow"
+      },
+      "co2_vent": {
+        "name": "CO2 vent mode"
       }
     },
     "select": {
@@ -438,6 +455,12 @@
       },
       "drying_min_room_temperature": {
         "name": "Drying room minimum"
+      },
+      "co2_vent_overlap_percent": {
+        "name": "CO2 vent overlap"
+      },
+      "co2_vent_overlap_seconds": {
+        "name": "CO2 vent overlap minimum"
       }
     },
     "sensor": {
@@ -464,6 +487,7 @@
           "supply_drop": "Supply colder than room",
           "phase_limit": "Phase limit",
           "drying": "Drying",
+          "co2_vent": "CO2 vent overlap done",
           "synced": "Synced group switched"
         }
       },

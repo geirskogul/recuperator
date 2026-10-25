@@ -22,6 +22,7 @@ from dataclasses import dataclass, fields
 
 from .ambient import Ambient
 from .const import (
+    CO2_VENT_MAX_PERCENT,
     DEFAULTS,
     EFFICIENCY_BREATHS,
     EFFICIENCY_MIN_GAP,
@@ -93,10 +94,13 @@ class Settings:
     drying_min_intake_share: float = DEFAULTS["drying_min_intake_share"]
     drying_exhaust_only_humidity: float = DEFAULTS["drying_exhaust_only_humidity"]
     drying_min_room_temperature: float = DEFAULTS["drying_min_room_temperature"]
+    co2_vent_overlap_percent: float = DEFAULTS["co2_vent_overlap_percent"]
+    co2_vent_overlap_seconds: float = DEFAULTS["co2_vent_overlap_seconds"]
     passive_intake: bool = False
     phase_limit: str = LIMIT_OFF
     drying: bool = False
     drying_exhaust_only: bool = False
+    co2_vent: bool = False
 
     @classmethod
     def from_mapping(cls, values: dict) -> Settings:
@@ -113,6 +117,7 @@ class Settings:
             phase_limit=str(values.get("phase_limit", LIMIT_OFF)),
             drying=bool(values.get("drying", False)),
             drying_exhaust_only=bool(values.get("drying_exhaust_only", False)),
+            co2_vent=bool(values.get("co2_vent", False)),
         )
 
     def timed_seconds(self, phase: str) -> float:
@@ -154,6 +159,14 @@ class BreathingLogic:
         # Resting in a synced group: paused, both fans off, while the other units
         # finish their phases (set by sync.step_sides, cleared when a phase begins).
         self.resting = False
+        # CO2 vent mode in a synced group (set by sync.step_sides, cleared when alone):
+        # after the group switches, this unit's exhaust keeps going until
+        # overlap_until while the other side exhausts too; then it pauses
+        # (joining) and starts its intake on its own, late (until the next phase).
+        self.grouped = False  # breathing as part of a synced group (set by sync.step_sides)
+        self.overlap_until: float | None = None
+        self.joining = False
+        self.late = False
         self.passive_flow: bool | None = None  # inflow seen during the running/last passive intake
         self.passive_flow_after_seconds: float | None = None
         self._intake_inside_start: float | None = None
@@ -287,12 +300,14 @@ class BreathingLogic:
         self.timed_reason = TIMED_NOT
         self.last_reason = REASON_STOPPED
         self.resting = False
+        self.overlap_until, self.joining, self.late = None, False, False
 
     def _begin(self, phase: str, now: float, mode: str, s: Settings, inside, outside) -> None:
         """Start an exhaust or intake phase and decide whether it is timed."""
         self.phase = phase
         self.next_phase = None
         self.resting = False
+        self.overlap_until, self.joining, self.late = None, False, False
         self.phase_started = now
         ref, far = self._ref_far(phase, inside, outside)
         if mode == MODE_TIMED:
@@ -342,6 +357,8 @@ class BreathingLogic:
         if self.phase == PHASE_STOPPED:
             return False
         self.partner_intake_share = None  # breathing alone: only its own drying counts
+        self.grouped = False
+        self.overlap_until, self.joining = None, False  # no group to overlap with
         chosen, mode = mode, self.effective_mode(mode)
         if self.phase == PHASE_INTAKE:
             self._sample_supply(now, inside)
@@ -393,8 +410,26 @@ class BreathingLogic:
             return 0.0
         return self._recovered(ref, far) * 100 / s.recovery_percent
 
+    def co2_vent_overlap(self, now: float, s: Settings) -> float:
+        """How long the running exhaust keeps going once its group switches, in CO2 vent mode (0: none).
+
+        The larger of CO2 vent overlap minimum and CO2 vent overlap share of
+        the exhaust so far. Drying adds its lean to the share: an intake share
+        of 60 % adds 40 % (the strongest of this unit's and the group's leans),
+        up to CO2_VENT_MAX_PERCENT in all.
+        """
+        if not s.co2_vent or self.phase != PHASE_EXHAUST or self.phase_started is None:
+            return 0.0
+        percent = s.co2_vent_overlap_percent
+        leans = [x for x in (self.drying.intake_share, self.partner_intake_share) if x is not None]
+        if leans:
+            percent += 100 - min(leans)
+        percent = min(percent, CO2_VENT_MAX_PERCENT)
+        return max(s.co2_vent_overlap_seconds, (now - self.phase_started) * percent / 100)
+
     def switch(self, now: float, reason: str, inside, outside, next_phase: str) -> None:
         """End the running phase (or re-aim a pause) so that `next_phase` comes next."""
+        self.overlap_until, self.joining = None, False
         if self.phase == PHASE_PAUSE:
             self.next_phase = next_phase
         else:
@@ -436,7 +471,8 @@ class BreathingLogic:
             else:
                 self.last_intake_seconds = duration
                 self.last_intake_refilled = self._refills()
-                self.last_intake_limited = reason in (REASON_PHASE_LIMIT, REASON_DRYING)
+                # An intake that started late, after a CO2 vent overlap, is short by design.
+                self.last_intake_limited = reason in (REASON_PHASE_LIMIT, REASON_DRYING) or self.late
                 self.last_intake_drained = reason in DRAINED_INTAKE
                 if outside is not None:
                     self.outdoor_estimate = outside
@@ -461,7 +497,7 @@ class BreathingLogic:
         if self.phase == PHASE_INTAKE and self._refills():
             self._after_limit = False
             return  # a room refilling on its own says nothing about the air moved
-        limited = reason in (REASON_PHASE_LIMIT, REASON_DRYING)
+        limited = reason in (REASON_PHASE_LIMIT, REASON_DRYING) or self.late
         known = self._measure.get(self.phase)
         if (not limited and not self._after_limit) or known is None:
             self._measure[self.phase] = duration
@@ -600,13 +636,16 @@ class BreathingLogic:
         the same reason it skips the exhaust after an intake that drying or the
         phase limit cut short: a limit never measures against a limited phase.
 
-        In a synced group, the other units' strongest drying lean counts as well.
+        In a synced group, the other units' strongest drying lean counts as well,
+        except in CO2 vent mode, where drying lengthens the overlap instead
+        (see co2_vent_overlap).
         """
         shares: list[tuple[float, str]] = []
         if self.phase == PHASE_INTAKE and not refill:
             if s.phase_limit == LIMIT_INTAKE:
                 shares.append((s.phase_limit_percent, REASON_PHASE_LIMIT))
-            for share in (self.drying.intake_share, self.partner_intake_share):
+            drying = () if s.co2_vent and self.grouped else (self.drying.intake_share, self.partner_intake_share)
+            for share in drying:
                 if share is not None:
                     shares.append((share, REASON_DRYING))
         elif self.phase == PHASE_EXHAUST and s.phase_limit == LIMIT_EXHAUST and self.phase_limit_status(s) == "active":

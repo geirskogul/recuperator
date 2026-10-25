@@ -612,6 +612,8 @@ class RecuperatorController:
             "linked_phase": self.linked_state(),
             "synced": self.synced(),
             "resting": self.resting(),
+            # CO2 vent mode: still exhausting after the group switched, or paused before the late intake.
+            "co2_vent_overlap": self.synced() and (self.logic.overlap_until is not None or self.logic.joining),
         }
 
     def resting(self) -> bool:
