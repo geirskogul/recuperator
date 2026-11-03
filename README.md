@@ -363,6 +363,8 @@ The replay has its own small **Replay** device, listed under *Connected devices*
 
 ## Recent changes
 
+- **0.7.1.** A **Copy settings to synced units** button on every member of a synced group gives the other members that unit's cycle settings.
+
 - **0.7.0.** [CO2 vent mode](#co2-vent-mode) for synced groups: the exhausts overlap by a share of the exhaust or a number of seconds, whichever is longer, so one unit is always exhausting. Drying in this mode lengthens the overlap instead of resting the unit taking air in.
 
 - **0.6.0.** Synced groups: up to four recuperators breathing as one.
