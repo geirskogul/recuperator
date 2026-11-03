@@ -62,10 +62,12 @@ from .const import (
     PHASE_INTAKE,
     PHASE_LIMITS,
     PHASE_STOPPED,
+    REPLAY_KEYS,
     SETTINGS_BY_KEY,
     STARTUP_WAIT_SECONDS,
     SYNC_EITHER,
     SYNC_LEAD_THIS,
+    SYNC_OPTION_KEYS,
     SYNC_RULES,
 )
 from .diagram import PALETTE, Palette, palette_to_text, parse_palette
@@ -193,6 +195,20 @@ class RecuperatorController:
         """Put every setting back to its default."""
         _LOGGER.info("%s: settings reset to defaults", self.entry.title)
         self.hass.config_entries.async_update_entry(self.entry, options=dict(DEFAULTS))
+
+    async def async_copy_settings_to_group(self) -> int:
+        """Give every other loaded member of the synced group this unit's cycle settings; returns how many."""
+        keys = [k for k in SETTINGS_BY_KEY if k not in REPLAY_KEYS] + list(SYNC_OPTION_KEYS)
+        values = {k: self.entry.options[k] for k in keys if k in self.entry.options}
+        copied = 0
+        for member in self.members():
+            if member is self:
+                continue
+            options = {k: v for k, v in member.entry.options.items() if k not in keys}
+            self.hass.config_entries.async_update_entry(member.entry, options={**options, **values})
+            copied += 1
+        _LOGGER.info("%s: settings copied to %d synced unit(s)", self.entry.title, copied)
+        return copied
 
     @callback
     def async_options_updated(self) -> None:

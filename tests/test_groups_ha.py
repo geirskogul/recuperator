@@ -298,3 +298,17 @@ def test_no_draughts_anywhere() -> None:
     for path in [root / "README.md", *(root / "custom_components").rglob("*"), *(root / "tools").glob("*.py")]:
         if path.is_file() and path.suffix in (".md", ".py", ".json", ".yaml", ".js"):
             assert "draught" not in path.read_text(encoding="utf-8").lower(), path
+
+
+async def test_copy_settings_button_reaches_the_whole_group(hass: HomeAssistant, trio) -> None:
+    big, s1, s2 = (e.runtime_data for e in trio)
+    hass.config_entries.async_update_entry(
+        big.entry, options={**big.entry.options, "max_phase_seconds": 777, "drying": True, "passive_intake": True, "replay_hours": 3}
+    )
+    await hass.async_block_till_done()
+    assert await big.async_copy_settings_to_group() == 2
+    for other in (s1, s2):
+        assert other.entry.options["max_phase_seconds"] == 777
+        assert other.entry.options["drying"] is True
+        assert "passive_intake" not in other.entry.options
+        assert other.entry.options["replay_hours"] == DEFAULTS["replay_hours"]

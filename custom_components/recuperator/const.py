@@ -218,6 +218,10 @@ SETTINGS: tuple[Setting, ...] = (
 SETTINGS_BY_KEY: dict[str, Setting] = {s.key: s for s in SETTINGS}
 DEFAULTS: dict[str, float] = {s.key: s.default for s in SETTINGS}
 
+# What "Copy settings to synced units" hands on: the cycle's settings and its on/off options. Left
+# out are the replay and diagram settings, passive intake (it depends on a unit's own fans) and Mode.
+SYNC_OPTION_KEYS = ("phase_limit", "drying", "drying_exhaust_only", "co2_vent")
+
 # Settings shown on the Replay device and Configure page, not with the cycle settings.
 REPLAY_KEYS = ("replay_hours", "replay_playback_seconds", "replay_frames")
 # ...and its on/off settings: draw the synced recuperators too, and also save a GIF.

@@ -365,6 +365,9 @@
       "reset_settings": {
         "name": "Reset settings to defaults"
       },
+      "copy_settings": {
+        "name": "Copy settings to synced units"
+      },
       "create_replay": {
         "name": "Create"
       }

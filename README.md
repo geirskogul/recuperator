@@ -158,6 +158,8 @@ Breathing, Mode and the learned temperatures all survive a restart. After a rest
 
 To start over, the **Reset settings to defaults** button resets all the settings and the diagram's colours and airflow. It never touches your fans, probes, Breathing, Mode or a linked unit.
 
+In a synced group, the **Copy settings to synced units** button on any member gives every other member that unit's cycle settings (lengths, thresholds, drying, phase limit, CO2 vent mode). It leaves out Mode, passive intake, the diagram and replay settings, the sync rule, and the fans and probes.
+
 ## Extras
 
 ### Room and outdoor sensors
